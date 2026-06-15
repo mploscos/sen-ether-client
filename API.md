@@ -1,0 +1,239 @@
+# sen-ether-client API
+
+Public import:
+
+```js
+import { Sen, SenInterest, SenRemoteObject } from 'sen-ether-client';
+```
+
+## Compatibility
+
+`sen-ether-client@0.1.x` supports:
+
+- kernel protocol `9`
+- ether protocol `2`
+
+These protocol versions are checked during the SEN handshake. A different
+kernel or ether protocol should be treated as unsupported unless `sen-ether-client`
+explicitly adds support for it.
+
+The protocol STL files are included in `resources/protocol` as the source for
+the codec. The SEN release noted in that folder is informational; it is not a
+compatibility check.
+
+The generated protocol module is loaded at runtime; STL parsing is a maintenance
+step, not part of connection or message decoding.
+
+## Sen
+
+```js
+const sen = await Sen.connect();
+
+// with explicit options:
+const sen = new Sen(options);
+await sen.connect(options);
+```
+
+Connection options:
+
+- `interfaceAddress`: local interface address or interface name for multicast
+  discovery.
+- `tcpHub`: optional SEN TCP discovery hub as `host:port`. If omitted,
+  multicast discovery is used.
+- `session`: optional SEN session name. If omitted, `Sen` can use queries for
+  different sessions and connects to each one on demand.
+- `timeout`: discovery and operation timeout in ms.
+- `discoverySettleMs`: discovery settle time after the first process is found.
+  Defaults to `100`.
+- `reconnect`: whether to reconnect and restart interests.
+- `reconnectDelayMs`: delay between reconnect attempts.
+- `maxReconnectAttempts`: maximum reconnect attempts.
+- `participantReadyTimeoutMs`: short non-fatal grace timeout for bus
+  participant acknowledgements. Defaults to `1000`.
+- `socketKeepAlive`: enable TCP keepalive. Defaults to `true`.
+- `socketIdleTimeoutMs`: optional TCP idle timeout. Defaults to `0` because
+  valid SEN connections can be quiet on TCP while bus data flows separately.
+
+`Sen.connect()` uses multicast discovery. `sen-ether-client` reads this SEN environment
+variable as its multicast default:
+
+- `SEN_ETHER_DISCOVERY_PORT`
+
+Multicast group, bind address and interface selection are explicit `sen-ether-client`
+options, not SEN environment variables.
+
+Preferred multi-session usage:
+
+```js
+const sen = await Sen.connect();
+
+const hmi = await sen.interest('SELECT * FROM hmi.diagnostics');
+const world = await sen.interest('SELECT * FROM world1.environment');
+```
+
+TCP discovery hub usage:
+
+```js
+const sen = await Sen.connect({ tcpHub: '127.0.0.1:65222' });
+```
+
+Explicit single-session usage is still supported:
+
+```js
+const hmi = await Sen.connect({ session: 'hmi' });
+await hmi.interest('SELECT * FROM hmi.diagnostics');
+```
+
+If a SEN bus name itself contains dots and is not a session-qualified bus, pass
+it explicitly. This is useful for standalone scenarios that run in one Ether
+session but publish on a bus such as `scenario.environment`:
+
+```js
+const scenario = await Sen.connect({
+  session: 'scenario'
+});
+
+const objects = await scenario.interest('SELECT * FROM scenario.environment', {
+  bus: 'scenario.environment',
+  forceBus: true
+});
+```
+
+Main methods:
+
+- `await sen.connect(options)`
+- `await sen.interest(query, options)`
+- `await sen.session(name)`
+- `sen.listSessions()`
+- `sen.listBuses(options)`
+- `await sen.bus(name, options)`
+- `sen.objects()`
+- `sen.getObject(selector)`
+- `await sen.waitForObject(selector, options)`
+- `await sen.close()`
+
+Session and bus navigation:
+
+```js
+const sen = await Sen.connect();
+
+for (const sessionName of sen.listSessions()) {
+  const session = await sen.session(sessionName);
+  console.log(sessionName, session.listBuses());
+}
+
+const diagnostics = await sen.session('hmi').then(hmi => hmi.bus('diagnostics'));
+```
+
+Main events:
+
+- `connect`
+- `close`
+- `reconnecting`
+- `reconnect`
+- `reconnectError`
+- `warning`
+- `object`
+- `remove`
+- `change`
+- `event`
+
+## SenInterest
+
+Returned by `await sen.interest(query)`.
+
+```js
+const interest = await sen.interest('SELECT * FROM hmi.diagnostics');
+const object = await interest.waitFor('EtherProbe');
+```
+
+Main methods:
+
+- `interest.objects()`
+- `interest.get(selector)`
+- `await interest.waitFor(selector, options)`
+- `interest.close()`
+
+Main events:
+
+- `object`
+- `remove`
+- `change`
+- `changes`
+- `event`
+- `stale`
+- `restart`
+
+For browser gateways or high-frequency telemetry, request only the properties
+you need and emit batches instead of one JS event per property update:
+
+```js
+const tracks = await sen.interest('SELECT hmi.tactical.BaseTrack FROM hmi.loadtest', {
+  properties: ['latitude', 'longitude', 'altitude', 'trackHeading'],
+  changeMode: 'batch',
+  batchIntervalMs: 16,
+  batchMaxSize: 1000,
+  maxQueuedChanges: 10000,
+  backpressure: 'drop-oldest',
+  coalesce: true
+});
+
+tracks.on('changes', ({ changes, dropped }) => {
+  // Send one compact WebSocket frame to the browser.
+});
+```
+
+`changeMode: 'individual'` is the default and preserves the traditional
+`change`/`change:<property>` events. `changeMode: 'both'` emits both forms.
+
+## SenRemoteObject
+
+Returned by `interest.waitFor(...)`, `interest.getObject(...)`, or
+`sen.getObject(...)`.
+
+```js
+console.log(await object.get('label'));
+await object.set('label', 'from-js');
+console.log(await object.call('ping', ['hello']));
+```
+
+Main properties:
+
+- `id`
+- `name`
+- `className`
+- `snapshot`
+- `timestampNs`: latest SEN source timestamp as a nanosecond `BigInt`
+- `propertyTimestamps`: `Map<string, bigint>` with the latest known timestamp per property
+
+Main methods:
+
+- `object.matches(selector)`
+- `await object.waitForType(options)`
+- `await object.get(property)`
+- `object.getPropertyTimestamp(property)`
+- `await object.set(property, value)`
+- `await object.call(method, args)`
+
+Main events:
+
+- `change`
+- `change:<property>`
+- SEN runtime event names emitted by the remote object.
+- `stale`
+
+`change.timestampNs` is also a nanosecond `BigInt`. This keeps SEN's original
+64-bit timestamp precision. Convert it explicitly at JSON boundaries:
+
+```js
+tracks.on('change', ({ object, name, value, timestampNs }) => {
+  websocket.send(JSON.stringify({
+    object: object.name,
+    name,
+    value,
+    timestampNs: timestampNs?.toString()
+  }));
+});
+```
+
+Low-level protocol modules are intentionally not public API.

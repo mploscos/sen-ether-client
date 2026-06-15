@@ -1,0 +1,15 @@
+{
+  "kernelProtocolVersion": 9,
+  "etherProtocolVersion": 2,
+  "source": {
+    "senVersion": "0.6.0-rc1",
+    "note": "Informational only. Runtime compatibility is checked with kernelProtocolVersion and etherProtocolVersion."
+  },
+  "files": {
+    "etherRuntime": "ether/runtime.stl",
+    "etherDiscovery": "ether/discovery.stl",
+    "kernelBus": "kernel/bus_protocol.stl",
+    "kernelBasicTypes": "kernel/basic_types.stl",
+    "kernelTypeSpecs": "kernel/type_specs.stl"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "sen-ether-client",
+  "version": "0.1.0",
+  "description": "Pure JavaScript SEN client for existing kernels over ether",
+  "senCompatibility": {
+    "kernelProtocolVersion": 9,
+    "etherProtocolVersion": 2
+  },
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "sen-ether-scan": "./bin/node-sen-scan.js",
+    "sen-ether-probe": "./bin/node-sen-probe.js"
+  },
+  "files": [
+    "API.md",
+    "README.md",
+    "index.js",
+    "lib",
+    "bin",
+    "resources",
+    "scripts"
+  ],
+  "license": "MIT",
+  "exports": "./index.js",
+  "scripts": {
+    "generate:protocol": "node ./scripts/generate-protocol.mjs",
+    "test": "node --test ./test/protocol.test.js ./test/codec.test.js ./test/discovery.test.js ./test/sen.test.js",
+    "test:integration": "node --test ./test/integration-*.test.js"
+  }
+}
