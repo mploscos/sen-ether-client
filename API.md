@@ -45,14 +45,21 @@ Connection options:
 - `timeout`: discovery and operation timeout in ms.
 - `discoverySettleMs`: discovery settle time after the first process is found.
   Defaults to `100`.
+- `busDiscoverySettleMs`: max wait after a lightweight session connection while
+  bus announcements arrive. Defaults to at least `300`.
 - `reconnect`: whether to reconnect and restart interests.
 - `reconnectDelayMs`: delay between reconnect attempts.
-- `maxReconnectAttempts`: maximum reconnect attempts.
+- `maxReconnectAttempts`: maximum reconnect attempts. Defaults to `0`, which
+  means unlimited retries.
 - `participantReadyTimeoutMs`: short non-fatal grace timeout for bus
   participant acknowledgements. Defaults to `1000`.
 - `socketKeepAlive`: enable TCP keepalive. Defaults to `true`.
 - `socketIdleTimeoutMs`: optional TCP idle timeout. Defaults to `0` because
   valid SEN connections can be quiet on TCP while bus data flows separately.
+- `presenceTimeoutMs`: close and reconnect when the connected SEN process stops
+  announcing ether presence beams. Defaults to `5000`; set `0` to disable.
+- `presenceCheckIntervalMs`: presence watchdog check interval. Defaults to
+  `1000`.
 
 `Sen.connect()` uses multicast discovery. `sen-ether-client` reads this SEN environment
 variable as its multicast default:
@@ -104,6 +111,7 @@ Main methods:
 - `await sen.connect(options)`
 - `await sen.interest(query, options)`
 - `await sen.session(name)`
+- `await sen.discoverBuses(options)`
 - `sen.listSessions()`
 - `sen.listBuses(options)`
 - `await sen.bus(name, options)`
@@ -117,6 +125,9 @@ Session and bus navigation:
 ```js
 const sen = await Sen.connect();
 
+console.log(await sen.discoverBuses());
+// [{ session: 'hmi', bus: 'diagnostics', qualified: 'hmi.diagnostics' }]
+
 for (const sessionName of sen.listSessions()) {
   const session = await sen.session(sessionName);
   console.log(sessionName, session.listBuses());
@@ -124,6 +135,10 @@ for (const sessionName of sen.listSessions()) {
 
 const diagnostics = await sen.session('hmi').then(hmi => hmi.bus('diagnostics'));
 ```
+
+`discoverBuses()` does not create interests and does not join any SEN bus. It
+does open a lightweight process connection per discovered session, because SEN
+presence beams announce sessions/processes but not the bus list.
 
 Main events:
 

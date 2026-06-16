@@ -64,6 +64,8 @@ function makeTypedObject(options = {}) {
       }
     }
   };
+  bus.objectsById = new Map([[object.id, object]]);
+  interest.objectsById.set(object.id, object);
 
   return { bus, interest, object };
 }
@@ -129,6 +131,41 @@ test('Sen lists buses in single-session mode', () => {
   assert.deepEqual(sen.listBuses({ qualified: true }), ['hmi.diagnostics', 'hmi.hud']);
 });
 
+test('Sen discovers buses across all discovered targets without interests', async () => {
+  const originalConnect = Sen.prototype.connect;
+  const originalClose = Sen.prototype.close;
+  Sen.prototype.connect = async function connect(options = {}) {
+    if (!options.target?.buses) {
+      return await originalConnect.call(this, options);
+    }
+    this.target = options.target;
+    this.client = { processInfo: { sessionName: options.session } };
+    this.remoteBuses = new Set(options.target.buses);
+    return this;
+  };
+  Sen.prototype.close = async function close() {
+    this.client = undefined;
+  };
+
+  try {
+    const sen = new Sen();
+    sen.targets = [
+      { session: { name: 'hmi' }, process: { appName: 'producer-a' }, buses: ['diagnostics'] },
+      { session: { name: 'hmi' }, process: { appName: 'producer-b' }, buses: ['hud'] },
+      { session: { name: 'world1' }, process: { appName: 'producer-c' }, buses: ['environment'] }
+    ];
+
+    assert.deepEqual(await sen.discoverBuses({ busDiscoverySettleMs: 0 }), [
+      { session: 'hmi', bus: 'diagnostics', qualified: 'hmi.diagnostics' },
+      { session: 'hmi', bus: 'hud', qualified: 'hmi.hud' },
+      { session: 'world1', bus: 'environment', qualified: 'world1.environment' }
+    ]);
+  } finally {
+    Sen.prototype.connect = originalConnect;
+    Sen.prototype.close = originalClose;
+  }
+});
+
 test('Sen bus is an alias for subscribe', async () => {
   const sen = new Sen();
   sen.subscribe = async (name, options) => ({ name, options });
@@ -192,6 +229,118 @@ test('interest property filters skip unrelated property decoding and events', ()
   assert.deepEqual(changes.map(change => change.name), ['latitude']);
   assert.equal(object.snapshot.latitude, 41.2);
   assert.equal(object.snapshot.longitude, undefined);
+});
+
+test('same remote object can belong to multiple interests on one bus', async () => {
+  const sen = new Sen({ timeout: 10 });
+  const client = new EventEmitter();
+  let nextInterestId = 10;
+  const stateRequests = [];
+  client.processInfo = { sessionName: 'hmi' };
+  client.joinBus = name => {
+    queueMicrotask(() => client.emit('busParticipantReady', { busName: name }));
+    return { busId: 123 };
+  };
+  client.startInterest = (bus, query) => ({ id: nextInterestId++, busName: bus, query });
+  client.requestTypes = () => {};
+  client.requestObjectStates = (bus, requests) => {
+    stateRequests.push({ bus, requests });
+  };
+  sen.target = { session: { name: 'hmi' } };
+  sen.client = client;
+  sen.remoteBuses.add('loadtest');
+
+  const typed = await sen.interest('SELECT test.Track FROM hmi.loadtest');
+  const star = await sen.interest('SELECT * FROM hmi.loadtest');
+  const bus = typed.bus;
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: typed.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+
+  const object = typed.get('track-42');
+  object.spec = makeTypedObject().object.spec;
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: star.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 2n }]
+    }]
+  });
+
+  assert.equal(bus.objects().length, 1);
+  assert.equal(star.get('track-42'), object);
+  assert.deepEqual([...object.interestIds].sort((a, b) => a - b), [typed.id, star.id].sort((a, b) => a - b));
+  assert.equal(stateRequests.at(-1).requests.some(request => request.interestId === star.id && request.objectIds.includes(42)), true);
+
+  const typedChanges = [];
+  const starChanges = [];
+  typed.on('change', change => typedChanges.push(change));
+  star.on('change', change => starChanges.push(change));
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 }
+  ]), 'update', 3n);
+
+  assert.deepEqual(typedChanges.map(change => change.name), ['latitude']);
+  assert.deepEqual(starChanges.map(change => change.name), ['latitude']);
+});
+
+test('recreated interest requests object state again for existing object ids', async () => {
+  const sen = new Sen({ timeout: 10 });
+  const client = new EventEmitter();
+  const stateRequests = [];
+  const stopped = [];
+  client.processInfo = { sessionName: 'hmi' };
+  client.joinBus = name => {
+    queueMicrotask(() => client.emit('busParticipantReady', { busName: name }));
+    return { busId: 123 };
+  };
+  client.startInterest = (bus, query) => ({ id: 7, busName: bus, query });
+  client.stopInterest = (bus, id) => stopped.push({ bus, id });
+  client.requestTypes = () => {};
+  client.requestObjectStates = (bus, requests) => {
+    stateRequests.push({ bus, requests });
+  };
+  sen.target = { session: { name: 'hmi' } };
+  sen.client = client;
+  sen.remoteBuses.add('loadtest');
+
+  const first = await sen.interest('SELECT * FROM hmi.loadtest');
+  const bus = first.bus;
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: first.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+  first.get('track-42').spec = makeTypedObject().object.spec;
+  bus.handleTypesInfoResponse({ types: [] });
+
+  assert.equal(stateRequests.length, 1);
+  assert.equal(stateRequests[0].requests[0].interestId, 7);
+  first.close();
+  assert.deepEqual(stopped, [{ bus: 'loadtest', id: 7 }]);
+  assert.equal(bus.objects().length, 0);
+  assert.equal(bus.requestedTypeHashes.has(123), false);
+
+  const second = await sen.interest('SELECT * FROM hmi.loadtest');
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: second.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 2n }]
+    }]
+  });
+  second.get('track-42').spec = makeTypedObject().object.spec;
+  bus.handleTypesInfoResponse({ types: [] });
+
+  assert.equal(stateRequests.length, 2);
+  assert.equal(stateRequests[1].requests[0].interestId, 7);
+  assert.deepEqual(stateRequests[1].requests[0].objectIds, [42]);
 });
 
 test('remote object changes expose SEN timestamps as nanosecond BigInts', () => {

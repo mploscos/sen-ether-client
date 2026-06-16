@@ -84,6 +84,11 @@ const sen = await Sen.connect({
 });
 ```
 
+Connected sessions are monitored through SEN ether presence beams. If the
+remote process stops announcing itself for `presenceTimeoutMs` milliseconds
+(default `5000`), the client closes the stale connection and restarts the
+configured interests.
+
 `sen-ether-client` can work with several SEN sessions from the same client. The session
 is inferred from the query:
 
@@ -98,6 +103,8 @@ You can also navigate explicitly through sessions and buses:
 const sen = await Sen.connect();
 
 console.log(sen.listSessions());
+console.log(await sen.discoverBuses());
+// [{ session: 'hmi', bus: 'diagnostics', qualified: 'hmi.diagnostics' }]
 
 const hmi = await sen.session('hmi');
 console.log(hmi.listBuses());
@@ -105,6 +112,11 @@ console.log(hmi.listBuses());
 const diagnostics = await hmi.bus('diagnostics');
 const probe = await diagnostics.waitFor('EtherProbe');
 ```
+
+`discoverBuses()` does not create interests and does not join any SEN bus. It
+uses discovery to find sessions and opens lightweight process connections only
+to read bus announcements. If buses are not announced immediately after the
+process connection, it waits up to `busDiscoverySettleMs` milliseconds.
 
 You can also connect to one explicit session:
 

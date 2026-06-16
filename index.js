@@ -34,13 +34,16 @@
  * @property {string} [app] Remote process appName substring filter.
  * @property {number} [timeout=3000] Discovery and operation timeout in ms.
  * @property {number} [discoverySettleMs=100] Discovery settle time after the first process is found.
+ * @property {number} [busDiscoverySettleMs=300] Max wait after lightweight session connect before reading bus announcements.
  * @property {number} [participantReadyTimeoutMs=1000] Short grace timeout for non-fatal bus participant acknowledgements.
  * @property {boolean} [reconnect=true] Reconnect and restart interests after disconnection.
  * @property {number} [reconnectDelayMs=500] Delay between reconnect attempts.
- * @property {number} [maxReconnectAttempts=10] Maximum reconnect attempts.
+ * @property {number} [maxReconnectAttempts=0] Maximum reconnect attempts. `0` means unlimited.
  * @property {boolean} [socketKeepAlive=true] Enable TCP keepalive on SEN ether connections.
  * @property {number} [socketKeepAliveInitialDelayMs=1000] TCP keepalive initial delay.
  * @property {number} [socketIdleTimeoutMs=0] Optional transport idle timeout in ms. `0` disables it.
+ * @property {number} [presenceTimeoutMs=5000] Close and reconnect when the connected SEN process stops announcing presence beams. `0` disables it.
+ * @property {number} [presenceCheckIntervalMs=1000] Presence watchdog check interval in ms.
  * @property {string} [interfaceAddress] Local interface address or interface name for multicast discovery.
  * @property {object} [target] Already discovered/direct SEN target.
  */
@@ -62,6 +65,13 @@
 /**
  * @typedef {object} SenListBusesOptions
  * @property {boolean} [qualified=false] Return session-qualified bus names.
+ */
+
+/**
+ * @typedef {object} SenBusSummary
+ * @property {string} session SEN session name.
+ * @property {string} bus Bus name local to the session.
+ * @property {string} qualified Session-qualified bus name usable in `SELECT * FROM <qualified>`.
  */
 
 /**
