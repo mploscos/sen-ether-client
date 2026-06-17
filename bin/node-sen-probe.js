@@ -254,7 +254,9 @@ try {
 
   const client = new EtherClient({
     sessionName: target.session.name,
-    appName: 'sen-ether-probe'
+    appName: 'sen-ether-probe',
+    interfaceAddress: options.interfaceAddress,
+    discoveryPort: options.port
   });
   const remoteBuses = new Set();
   const requestedTypeHashes = new Set();
@@ -405,7 +407,7 @@ try {
     });
   }
 
-  client.joinBus(bus);
+  await client.joinBus(bus);
   await waitForEvent(client, 'busParticipantReady', 5000).catch(error => {
     console.warn(`[warn] ${error.message}; starting interest anyway`);
   });

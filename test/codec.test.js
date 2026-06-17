@@ -248,6 +248,28 @@ test('SEN Buffer values round-trip as Node buffers', () => {
   assert.deepEqual([...decoded], [1, 2, 3]);
 });
 
+test('SEN EnumTypeSpec decodes as numeric key and encodes numeric or named values', () => {
+  const typeRegistry = new Map([[
+    'test.Force',
+    {
+      qualifiedName: 'test.Force',
+      data: {
+        type: 'EnumTypeSpec',
+        value: {
+          storageType: 'u32',
+          enums: [
+            { key: 1, name: 'Friendly' },
+            { key: 2, name: 'Hostile' }
+          ]
+        }
+      }
+    }
+  ]]);
+
+  assert.equal(decodeValue(encodeValue(2, 'test.Force', typeRegistry), 'test.Force', typeRegistry), 2);
+  assert.equal(decodeValue(encodeValue('Hostile', 'test.Force', typeRegistry), 'test.Force', typeRegistry), 2);
+});
+
 test('SEN VariantTypeSpec round-trips with explicit field type', () => {
   const typeRegistry = new Map([[
     'test.Payload',
