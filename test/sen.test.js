@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { Sen, SenInterest, SenRemoteObject } from '../index.js';
+import { SenBus } from '../lib/sen.js';
 import { createProcessInfo, validateRemoteHello } from '../lib/client.js';
 import { SenBinaryWriter } from '../lib/codec.js';
 import { propertyHash } from '../lib/hash32.js';
@@ -72,6 +73,89 @@ function makeTypedObject(options = {}) {
 
 test('Sen is the public high-level client export', () => {
   assert.equal(typeof Sen.connect, 'function');
+});
+
+test('remote objects preserve all pending states received before type info', () => {
+  const bus = new EventEmitter();
+  bus.typeRegistry = new Map();
+  bus.interests = new Map();
+  bus.sen = new EventEmitter();
+
+  const interest = new SenInterest(bus, 7, 'SELECT test.Track FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  const object = new SenRemoteObject(bus, {
+    id: 42,
+    name: 'track-42',
+    className: 'test.Track',
+    typeHash: 123,
+    ownerId: 9,
+    interestId: interest.id
+  });
+  bus.objectsById = new Map([[object.id, object]]);
+  interest.objectsById.set(object.id, object);
+
+  object.applyState(propertyUpdateBuffer([
+    { name: 'entityType', type: 'u32', value: 5 },
+    { name: 'latitude', type: 'f64', value: 40.1 }
+  ]), 'state', 100n, { interestId: interest.id });
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 40.2 }
+  ]), 'update', 200n, { interestId: interest.id });
+
+  object.spec = {
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        properties: [
+          { id: propertyHash('entityType'), name: 'entityType', type: 'u32', category: 'staticRO' },
+          { id: propertyHash('latitude'), name: 'latitude', type: 'f64', category: 'dynamicRO' }
+        ]
+      }
+    }
+  };
+
+  const pendingStates = object.pendingStates.splice(0);
+  for (const state of pendingStates) {
+    object.applyState(state.buffer, state.source, state.timestampNs, { interestId: state.interestId });
+  }
+
+  assert.equal(object.snapshot.entityType, 5);
+  assert.equal(object.snapshot.latitude, 40.2);
+});
+
+test('remote object waitForType shares one listener for concurrent callers', async () => {
+  const bus = new EventEmitter();
+  bus.typeRegistry = new Map();
+  bus.interests = new Map();
+  bus.sen = new EventEmitter();
+
+  const interest = new SenInterest(bus, 7, 'SELECT test.Track FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  const object = new SenRemoteObject(bus, {
+    id: 42,
+    name: 'track-42',
+    className: 'test.Track',
+    typeHash: 123,
+    ownerId: 9,
+    interestId: interest.id
+  });
+
+  const waiters = Array.from({ length: 20 }, () => object.waitForType({ timeout: 1000 }));
+  assert.equal(object.listenerCount('type'), 1);
+
+  const spec = {
+    data: {
+      type: 'ClassTypeSpec',
+      value: { properties: [] }
+    }
+  };
+  object.spec = spec;
+  object.emit('type', spec);
+
+  assert.deepEqual(await Promise.all(waiters), Array(20).fill(spec));
+  assert.equal(object.listenerCount('type'), 0);
 });
 
 test('single-session clients reject interests for another session', async () => {
@@ -286,6 +370,115 @@ test('same remote object can belong to multiple interests on one bus', async () 
 
   assert.deepEqual(typedChanges.map(change => change.name), ['latitude']);
   assert.deepEqual(starChanges.map(change => change.name), ['latitude']);
+});
+
+test('published objects from a new owner reset reused object ids', () => {
+  const sen = new EventEmitter();
+  const typeRequests = [];
+  const stateRequests = [];
+  sen.client = {
+    requestTypes: (bus, hashes) => typeRequests.push({ bus, hashes: [...hashes] }),
+    requestObjectStates: (bus, requests) => stateRequests.push({ bus, requests })
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  const otherInterest = new SenInterest(bus, 8, 'SELECT test.Track FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+  bus.interests.set(otherInterest.id, otherInterest);
+
+  const stale = [];
+  const removed = [];
+  const otherRemoved = [];
+  interest.on('stale', detail => stale.push(detail));
+  interest.on('remove', object => removed.push(object));
+  otherInterest.on('remove', object => otherRemoved.push(object));
+
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+  const first = interest.get('track-42');
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: otherInterest.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+  assert.equal(otherInterest.get('track-42'), first);
+
+  bus.handleObjectsPublished({
+    ownerId: 88,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 2n }]
+    }]
+  });
+  const second = interest.get('track-42');
+
+  assert.notEqual(second, first);
+  assert.equal(first.ownerId, 77);
+  assert.equal(second.ownerId, 88);
+  assert.equal(bus.objects().length, 1);
+  assert.deepEqual(bus.objects(), [second]);
+  assert.equal(stale.length, 1);
+  assert.equal(stale[0].previousOwnerId, 77);
+  assert.equal(stale[0].ownerId, 88);
+  assert.deepEqual(removed, [first]);
+  assert.deepEqual(otherRemoved, [first]);
+  assert.equal(otherInterest.get('track-42'), undefined);
+});
+
+test('object state responses are ignored when owner id does not match', () => {
+  const sen = new EventEmitter();
+  sen.client = {
+    requestTypes: () => {},
+    requestObjectStates: () => {}
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+
+  const object = interest.get('track-42');
+  object.spec = makeTypedObject().object.spec;
+  bus.handleObjectsStateResponse({
+    ownerId: 88,
+    responses: [{
+      interestId: interest.id,
+      objectStates: [{
+        id: 42,
+        timestamp: 2n,
+        state: propertyUpdateBuffer([{ name: 'latitude', type: 'f64', value: 99 }])
+      }]
+    }]
+  });
+
+  assert.equal(object.snapshot.latitude, undefined);
+
+  bus.handleObjectsStateResponse({
+    ownerId: 77,
+    responses: [{
+      interestId: interest.id,
+      objectStates: [{
+        id: 42,
+        timestamp: 3n,
+        state: propertyUpdateBuffer([{ name: 'latitude', type: 'f64', value: 41.2 }])
+      }]
+    }]
+  });
+
+  assert.equal(object.snapshot.latitude, 41.2);
 });
 
 test('recreated interest requests object state again for existing object ids', async () => {
