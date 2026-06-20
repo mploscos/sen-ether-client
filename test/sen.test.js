@@ -250,6 +250,42 @@ test('Sen discovers buses across all discovered targets without interests', asyn
   }
 });
 
+test('Sen discoverBuses waits for the initial bus announcement burst', async () => {
+  const originalConnect = Sen.prototype.connect;
+  const originalClose = Sen.prototype.close;
+  Sen.prototype.connect = async function connect(options = {}) {
+    if (!options.target?.buses) {
+      return await originalConnect.call(this, options);
+    }
+    this.target = options.target;
+    this.client = { processInfo: { sessionName: options.session } };
+    this.remoteBuses = new Set(options.target.buses);
+    setTimeout(() => {
+      this.remoteBuses.add('hud');
+      this.emit('busAvailable', { busName: 'hud' });
+    }, 20).unref?.();
+    return this;
+  };
+  Sen.prototype.close = async function close() {
+    this.client = undefined;
+  };
+
+  try {
+    const sen = new Sen();
+    sen.targets = [
+      { session: { name: 'hmi' }, process: { appName: 'producer' }, buses: ['diagnostics'] }
+    ];
+
+    assert.deepEqual(await sen.discoverBuses({ busDiscoverySettleMs: 80 }), [
+      { session: 'hmi', bus: 'diagnostics', qualified: 'hmi.diagnostics' },
+      { session: 'hmi', bus: 'hud', qualified: 'hmi.hud' }
+    ]);
+  } finally {
+    Sen.prototype.connect = originalConnect;
+    Sen.prototype.close = originalClose;
+  }
+});
+
 test('Sen bus is an alias for subscribe', async () => {
   const sen = new Sen();
   sen.subscribe = async (name, options) => ({ name, options });
