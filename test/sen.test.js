@@ -215,6 +215,19 @@ test('Sen lists buses in single-session mode', () => {
   assert.deepEqual(sen.listBuses({ qualified: true }), ['hmi.diagnostics', 'hmi.hud']);
 });
 
+test('Sen includes joined buses when remote announcements are stale', async () => {
+  const sen = new Sen();
+  sen.target = { session: { name: 'hmi' } };
+  sen.client = { processInfo: { sessionName: 'hmi' } };
+  sen.buses.set('diagnostics', new SenBus(sen, 'diagnostics', 17));
+
+  assert.deepEqual(sen.listBuses(), ['diagnostics']);
+  assert.deepEqual(sen.listBuses({ qualified: true }), ['hmi.diagnostics']);
+  assert.deepEqual(await sen.discoverBuses({ busDiscoverySettleMs: 0 }), [
+    { session: 'hmi', bus: 'diagnostics', qualified: 'hmi.diagnostics' }
+  ]);
+});
+
 test('Sen discovers buses across all discovered targets without interests', async () => {
   const originalConnect = Sen.prototype.connect;
   const originalClose = Sen.prototype.close;
