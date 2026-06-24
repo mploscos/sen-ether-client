@@ -67,7 +67,12 @@ variable as its multicast default:
 - `SEN_ETHER_DISCOVERY_PORT`
 
 Multicast group, bind address and interface selection are explicit `sen-ether-client`
-options, not SEN environment variables.
+options, not SEN environment variables. When no `interfaceAddress` is provided,
+multicast discovery joins every local IPv4 interface visible to Node.js. If a
+SEN producer on the same host sends discovery through a physical interface that
+does not loop multicast packets back locally, discovery can still return no
+processes; in that case run the producer discovery on `lo`, pass the matching
+`interfaceAddress`, or use SEN TCP discovery.
 
 Preferred multi-session usage:
 
