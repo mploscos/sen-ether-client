@@ -1,6 +1,6 @@
 {
   "name": "sen-ether-client",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "Pure JavaScript SEN client for existing kernels over ether",
   "senCompatibility": {
     "kernelProtocolVersion": 9,
@@ -25,7 +25,7 @@
   "exports": "./index.js",
   "scripts": {
     "generate:protocol": "node ./scripts/generate-protocol.mjs",
-    "test": "node --test ./test/protocol.test.js ./test/codec.test.js ./test/discovery.test.js ./test/sen.test.js",
+    "test": "node --test --test-concurrency=1 --test-reporter spec ./test/protocol.test.js ./test/codec.test.js ./test/discovery.test.js ./test/client.test.js ./test/sen.test.js",
     "test:integration": "node --test ./test/integration-*.test.js"
   }
 }

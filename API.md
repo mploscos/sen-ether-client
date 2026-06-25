@@ -8,7 +8,7 @@ import { Sen, SenInterest, SenRemoteObject } from 'sen-ether-client';
 
 ## Compatibility
 
-`sen-ether-client@0.1.x` supports:
+`sen-ether-client@0.1.x` and `sen-ether-client@0.2.x` support:
 
 - kernel protocol `9`
 - ether protocol `2`
@@ -39,9 +39,25 @@ Connection options:
 - `interfaceAddress`: local interface address or interface name for multicast
   discovery.
 - `tcpHub`: optional SEN TCP discovery hub as `host:port`. If omitted,
-  multicast discovery is used.
+  multicast discovery is used. When combined with `session`, the client opens
+  a local Ether listener, sends presence beams to the hub and connects to
+  compatible peers announced by the hub.
 - `session`: optional SEN session name. If omitted, `Sen` can use queries for
-  different sessions and connects to each one on demand.
+  different sessions and connects to each one on demand. When provided, the
+  client also acts as an active Ether process and announces itself through the
+  selected discovery transport.
+- `multicastDiscovery`: enable active multicast presence beaming when no
+  `tcpHub` is configured. Defaults to `true`.
+- `group`: multicast discovery group. Defaults to `239.255.0.44`.
+- `bindAddress`: optional multicast discovery bind address.
+- `listen`: enable the local Ether TCP listener. Defaults to `true` for active
+  hub sessions.
+- `listenHost`: host/interface for the local Ether listener. Defaults to
+  `0.0.0.0`.
+- `listenPort`: local Ether listener port. Defaults to `0` so the OS picks one.
+- `advertisedHost`: host advertised in discovery beams. Defaults to the
+  selected interface address.
+- `beamPeriodMs`: active discovery beam period. Defaults to `1000`.
 - `timeout`: discovery and operation timeout in ms.
 - `discoverySettleMs`: discovery settle time after the first process is found.
   Defaults to `100`.
@@ -86,8 +102,29 @@ const world = await sen.interest('SELECT * FROM world1.environment');
 TCP discovery hub usage:
 
 ```js
-const sen = await Sen.connect({ tcpHub: '127.0.0.1:65222' });
+const sen = await Sen.connect({
+  session: 'hmi',
+  tcpHub: '127.0.0.1:65222'
+});
 ```
+
+The TCP discovery hub forwards fixed-size presence beams only. Bus messages are
+sent over direct process TCP connections between peers, so Node.js producers
+and consumers must advertise reachable `listenHost`/`advertisedHost` endpoints.
+
+Multicast discovery usage:
+
+```js
+const sen = await Sen.connect({
+  session: 'hmi',
+  interfaceAddress: '127.0.0.1',
+  listenHost: '127.0.0.1',
+  advertisedHost: '127.0.0.1'
+});
+```
+
+On multi-interface machines, set `interfaceAddress` so multicast beams are sent
+and received on the intended network device.
 
 Explicit single-session usage is still supported:
 
@@ -115,6 +152,8 @@ Main methods:
 
 - `await sen.connect(options)`
 - `await sen.interest(query, options)`
+- `await sen.publishObjects(busName, objects, options)`
+- `await sen.removePublishedObjects(busName, objects, options)`
 - `await sen.session(name)`
 - `await sen.discoverBuses(options)`
 - `sen.listSessions()`
@@ -144,6 +183,30 @@ const diagnostics = await sen.session('hmi').then(hmi => hmi.bus('diagnostics'))
 `discoverBuses()` does not create interests and does not join any SEN bus. It
 does open a lightweight process connection per discovered session, because SEN
 presence beams announce sessions/processes but not the bus list.
+
+Publishing local objects:
+
+```js
+const sen = await Sen.connect({
+  session: 'session',
+  tcpHub: '127.0.0.1:65222'
+});
+
+await sen.publishObjects('session.bus', [{
+  name: 'demo-counter',
+  className: 'demo.Counter',
+  properties: {
+    label: 'Demo Counter',
+    count: 1,
+    running: true
+  }
+}]);
+```
+
+When no `spec` is provided, `sen-ether-client` infers a simple ClassTypeSpec
+from scalar `properties`. For objects with nested structs, sequences, enums or
+aliases, pass the exact SEN `spec` and dependent `types` so consumers can decode
+the state with the same model as native SEN producers.
 
 Main events:
 
@@ -188,8 +251,8 @@ For browser gateways or high-frequency telemetry, request only the properties
 you need and emit batches instead of one JS event per property update:
 
 ```js
-const tracks = await sen.interest('SELECT hmi.tactical.BaseTrack FROM hmi.loadtest', {
-  properties: ['latitude', 'longitude', 'altitude', 'trackHeading'],
+const tracks = await sen.interest('SELECT bus.Track FROM hmi.loadtest', {
+  properties: ['latitude', 'longitude', 'altitude', 'heading'],
   changeMode: 'batch',
   batchIntervalMs: 16,
   batchMaxSize: 1000,

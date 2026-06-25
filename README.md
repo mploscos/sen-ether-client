@@ -39,6 +39,7 @@ versions, not to a specific SEN release name.
 | sen-ether-client | Kernel protocol | Ether protocol |
 | --- | ---: | ---: |
 | 0.1.x | 9 | 2 |
+| 0.2.x | 9 | 2 |
 
 If a remote kernel reports another kernel or ether protocol version during the
 SEN handshake, `sen-ether-client` treats it as incompatible until that protocol version
@@ -61,6 +62,10 @@ visible SEN processes:
 const sen = await Sen.connect();
 ```
 
+When a `session` is provided, the client also behaves as an active Ether
+process: it opens a TCP listener, announces its presence through multicast
+discovery, and connects to compatible peers announced on the same session.
+
 If your SEN ether discovery port is configured through SEN's environment,
 `sen-ether-client` reads the same variable:
 
@@ -80,7 +85,25 @@ explicitly:
 
 ```js
 const sen = await Sen.connect({
+  session: 'hmi',
   tcpHub: '127.0.0.1:65222'
+});
+```
+
+With a `session` and `tcpHub`, `sen-ether-client` acts as an active Ether
+process: it opens a TCP listener, announces a SEN presence beam to the hub, and
+connects to compatible peers announced by the hub. This allows Node.js
+producers and consumers to discover each other without a native SEN process
+brokering their bus messages.
+
+For local multicast tests, select loopback explicitly:
+
+```js
+const sen = await Sen.connect({
+  session: 'hmi',
+  interfaceAddress: '127.0.0.1',
+  listenHost: '127.0.0.1',
+  advertisedHost: '127.0.0.1'
 });
 ```
 
@@ -152,8 +175,8 @@ For browser gateways or high-frequency telemetry, batch changes and decode only
 the properties needed by the UI:
 
 ```js
-const tracks = await sen.interest('SELECT hmi.tactical.BaseTrack FROM hmi.loadtest', {
-  properties: ['latitude', 'longitude', 'altitude', 'trackHeading'],
+const tracks = await sen.interest('SELECT bus.Track FROM hmi.loadtest', {
+  properties: ['latitude', 'longitude', 'altitude', 'heading'],
   changeMode: 'batch',
   coalesce: true
 });
@@ -177,6 +200,35 @@ const firstAircraft = await tracks.waitFor(
   object => object.className === 'rpr.Aircraft'
 );
 ```
+
+## Publish objects
+
+`sen-ether-client` can also act as a lightweight producer. The producer joins
+the bus, publishes local objects to remote interests, and answers type/state
+requests for those objects.
+
+```js
+import { Sen } from 'sen-ether-client';
+
+const sen = await Sen.connect({
+  session: 'session',
+  tcpHub: '127.0.0.1:65222'
+});
+
+await sen.publishObjects('session.bus', {
+  name: 'demo-counter',
+  className: 'demo.Counter',
+  properties: {
+    label: 'Demo Counter',
+    count: 1,
+    running: true
+  }
+});
+```
+
+For exact SEN typing, pass a `spec` on each object and any dependent custom
+types through `types`. This is required for structured values such as structs,
+sequences, enums and variants.
 
 ## Objects
 

@@ -147,6 +147,101 @@ test('Kernel bus ControlMessage round-trips InterestStarted', () => {
   assert.deepEqual(decoded.value, { query: 'type is RPR', id: 456 });
 });
 
+test('Kernel bus ControlMessage round-trips ObjectsPublished', () => {
+  const decoded = decodeKernelControlMessage(encodeKernelControlMessage({
+    type: 'ObjectsPublished',
+    value: {
+      ownerId: 10,
+      discoveries: [{
+        interestId: 20,
+        objects: [{
+          className: 'test.Track',
+          typeHash: 30,
+          name: 'track-1',
+          id: 40,
+          state: encodeValue(12.5, 'f32'),
+          time: 50n
+        }]
+      }]
+    }
+  }));
+
+  assert.equal(decoded.type, 'ObjectsPublished');
+  assert.equal(decoded.value.ownerId, 10);
+  assert.equal(decoded.value.discoveries[0].interestId, 20);
+  assert.equal(decoded.value.discoveries[0].objects[0].className, 'test.Track');
+  assert.equal(decoded.value.discoveries[0].objects[0].id, 40);
+  assert.equal(decodeValue(decoded.value.discoveries[0].objects[0].state, 'f32'), 12.5);
+});
+
+test('Kernel bus ControlMessage round-trips ObjectsStateResponse', () => {
+  const decoded = decodeKernelControlMessage(encodeKernelControlMessage({
+    type: 'ObjectsStateResponse',
+    value: {
+      ownerId: 10,
+      responses: [{
+        interestId: 20,
+        objectStates: [{
+          id: 40,
+          timestamp: 50n,
+          state: encodeValue('ok', 'string')
+        }]
+      }]
+    }
+  }));
+
+  assert.equal(decoded.type, 'ObjectsStateResponse');
+  assert.equal(decoded.value.ownerId, 10);
+  assert.equal(decoded.value.responses[0].interestId, 20);
+  assert.equal(decoded.value.responses[0].objectStates[0].id, 40);
+  assert.equal(decodeValue(decoded.value.responses[0].objectStates[0].state, 'string'), 'ok');
+});
+
+test('Kernel bus ControlMessage round-trips TypesInfoResponse ClassSpecResponse', () => {
+  const decoded = decodeKernelControlMessage(encodeKernelControlMessage({
+    type: 'TypesInfoResponse',
+    value: {
+      ownerId: 10,
+      types: [{
+        type: 'ClassSpecResponse',
+        classHash: 30,
+        spec: {
+          name: 'Track',
+          qualifiedName: 'test.Track',
+          description: 'Track type',
+          data: {
+            type: 'ClassTypeSpec',
+            value: {
+              properties: [{
+                name: 'latitude',
+                description: '',
+                category: 'dynamicRO',
+                type: 'f64',
+                transportMode: 'confirmed',
+                tags: [],
+                checkedSet: false
+              }],
+              methods: [],
+              events: [],
+              constructor: { name: '', description: '', args: [], returnType: '' },
+              parents: [],
+              isInterface: false
+            }
+          }
+        },
+        dependentTypes: []
+      }]
+    }
+  }));
+
+  assert.equal(decoded.type, 'TypesInfoResponse');
+  assert.equal(decoded.value.ownerId, 10);
+  assert.equal(decoded.value.types[0].type, 'ClassSpecResponse');
+  assert.equal(decoded.value.types[0].classHash, 30);
+  assert.equal(decoded.value.types[0].spec.qualifiedName, 'test.Track');
+  assert.equal(decoded.value.types[0].spec.data.value.properties[0].name, 'latitude');
+});
+
 test('Confirmed bus frame wraps bus control message', () => {
   const message = encodeBusControlMessage({
     type: 'RemoteParticipantReady',
