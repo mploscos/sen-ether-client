@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import net from 'node:net';
 import test from 'node:test';
 import { Sen, SenInterest, SenRemoteObject } from '../index.js';
 import { SenBus } from '../lib/sen.js';
@@ -23,6 +24,38 @@ function helloForSession(sessionName, version = { kernel: 9, ether: 2 }) {
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function canListenTcp() {
+  const server = net.createServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    return true;
+  } catch (error) {
+    if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+      return false;
+    }
+    throw error;
+  } finally {
+    if (server.listening) {
+      await new Promise(resolve => server.close(resolve));
+    }
+  }
+}
+
+async function waitForObjects(interest, count, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const objects = interest.objects();
+    if (objects.length >= count && objects.every(object => Object.keys(object.snapshot).length)) {
+      return objects;
+    }
+    await wait(25);
+  }
+  throw new Error(`timeout waiting for ${count} SEN objects; got ${interest.objects().length}`);
 }
 
 function propertyUpdateBuffer(updates) {
@@ -421,7 +454,7 @@ test('same remote object can belong to multiple interests on one bus', async () 
   assert.deepEqual(starChanges.map(change => change.name), ['latitude']);
 });
 
-test('published objects from a new owner reset reused object ids', () => {
+test('published objects from different owners can reuse object ids', () => {
   const sen = new EventEmitter();
   const typeRequests = [];
   const stateRequests = [];
@@ -435,12 +468,8 @@ test('published objects from a new owner reset reused object ids', () => {
   bus.interests.set(interest.id, interest);
   bus.interests.set(otherInterest.id, otherInterest);
 
-  const stale = [];
   const removed = [];
-  const otherRemoved = [];
-  interest.on('stale', detail => stale.push(detail));
   interest.on('remove', object => removed.push(object));
-  otherInterest.on('remove', object => otherRemoved.push(object));
 
   bus.handleObjectsPublished({
     ownerId: 77,
@@ -463,22 +492,45 @@ test('published objects from a new owner reset reused object ids', () => {
     ownerId: 88,
     discoveries: [{
       interestId: interest.id,
-      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 2n }]
+      objects: [{ id: 42, name: 'track-42-b', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 2n }]
     }]
   });
-  const second = interest.get('track-42');
+  const second = interest.get('track-42-b');
 
   assert.notEqual(second, first);
   assert.equal(first.ownerId, 77);
   assert.equal(second.ownerId, 88);
-  assert.equal(bus.objects().length, 1);
-  assert.deepEqual(bus.objects(), [second]);
-  assert.equal(stale.length, 1);
-  assert.equal(stale[0].previousOwnerId, 77);
-  assert.equal(stale[0].ownerId, 88);
-  assert.deepEqual(removed, [first]);
-  assert.deepEqual(otherRemoved, [first]);
-  assert.equal(otherInterest.get('track-42'), undefined);
+  assert.equal(bus.objects().length, 2);
+  assert.deepEqual(interest.objects(), [first, second]);
+  assert.deepEqual(otherInterest.objects(), [first]);
+  assert.deepEqual(removed, []);
+
+  first.spec = makeTypedObject().object.spec;
+  second.spec = makeTypedObject().object.spec;
+  bus.handleObjectsStateResponse({
+    ownerId: 88,
+    responses: [{
+      interestId: interest.id,
+      objectStates: [{
+        id: 42,
+        timestamp: 3n,
+        state: propertyUpdateBuffer([{ name: 'latitude', type: 'f64', value: 88 }])
+      }]
+    }]
+  });
+  assert.equal(first.snapshot.latitude, undefined);
+  assert.equal(second.snapshot.latitude, 88);
+
+  bus.handleRuntimeObjectUpdate({
+    to: 77,
+    update: {
+      objectId: 42,
+      time: 4n,
+      properties: propertyUpdateBuffer([{ name: 'latitude', type: 'f64', value: 77 }])
+    }
+  });
+  assert.equal(first.snapshot.latitude, 77);
+  assert.equal(second.snapshot.latitude, 88);
 });
 
 test('object state responses are ignored when owner id does not match', () => {
@@ -540,7 +592,8 @@ test('recreated interest requests object state again for existing object ids', a
     queueMicrotask(() => client.emit('busParticipantReady', { busName: name }));
     return { busId: 123 };
   };
-  client.startInterest = (bus, query) => ({ id: 7, busName: bus, query });
+  let nextInterestId = 7;
+  client.startInterest = (bus, query) => ({ id: nextInterestId++, busName: bus, query });
   client.stopInterest = (bus, id) => stopped.push({ bus, id });
   client.requestTypes = () => {};
   client.requestObjectStates = (bus, requests) => {
@@ -569,7 +622,17 @@ test('recreated interest requests object state again for existing object ids', a
   assert.equal(bus.objects().length, 0);
   assert.equal(bus.requestedTypeHashes.has(123), false);
 
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: first.id,
+      objects: [{ id: 42, name: 'stale-track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 2n }]
+    }]
+  });
+  assert.equal(bus.objects().length, 0);
+
   const second = await sen.interest('SELECT * FROM hmi.loadtest');
+  assert.equal(second.id, 8);
   bus.handleObjectsPublished({
     ownerId: 77,
     discoveries: [{
@@ -578,11 +641,135 @@ test('recreated interest requests object state again for existing object ids', a
     }]
   });
   second.get('track-42').spec = makeTypedObject().object.spec;
+
+  bus.handleObjectsStateResponse({
+    ownerId: 77,
+    responses: [{
+      interestId: first.id,
+      objectStates: [{
+        id: 42,
+        timestamp: 2n,
+        state: propertyUpdateBuffer([{ name: 'latitude', type: 'f64', value: 99 }])
+      }]
+    }]
+  });
+  assert.equal(second.get('track-42').snapshot.latitude, undefined);
+
   bus.handleTypesInfoResponse({ types: [] });
 
   assert.equal(stateRequests.length, 2);
-  assert.equal(stateRequests[1].requests[0].interestId, 7);
+  assert.equal(stateRequests[1].requests[0].interestId, 8);
   assert.deepEqual(stateRequests[1].requests[0].objectIds, [42]);
+});
+
+test('Sen keeps multi-producer objects stable after interest recreation', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-multi-${process.pid}-${Date.now()}`;
+  const discoveryPort = 47000 + (process.pid % 1000);
+  const options = {
+    session,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: discoveryPort,
+    beamPeriodMs: 100
+  };
+  const query = `SELECT * FROM ${session}.tracks`;
+  const producerA = await Sen.connect({ ...options, appName: 'producer-a' });
+  const producerB = await Sen.connect({ ...options, appName: 'producer-b' });
+  const consumer = await Sen.connect({ ...options, appName: 'consumer' });
+
+  const publish = async (producer, objects) => {
+    await producer.publishObjects('tracks', objects.map(object => ({
+      ...object,
+      className: 'demo.Track'
+    })));
+  };
+  const byName = objects => new Map(objects.map(object => [object.name, object]));
+  const assertPositions = (objects, expected) => {
+    const map = byName(objects);
+    assert.equal(objects.length, Object.keys(expected).length);
+    for (const [name, x] of Object.entries(expected)) {
+      assert.equal(Number(map.get(name)?.snapshot.x), x, `unexpected x for ${name}`);
+    }
+    assert.equal(objects.filter(object => object.id === 1).length, 2);
+    assert.equal(new Set(objects.filter(object => object.id === 1).map(object => object.ownerId)).size, 2);
+  };
+
+  try {
+    await publish(producerA, [
+      { id: 1, name: 'a-1', properties: { x: 10, y: 1 } },
+      { id: 2, name: 'a-2', properties: { x: 20, y: 2 } },
+      { id: 3, name: 'a-3', properties: { x: 30, y: 3 } }
+    ]);
+    await publish(producerB, [
+      { id: 1, name: 'b-1', properties: { x: 100, y: 10 } }
+    ]);
+
+    await consumer.client.connect(producerA.client.listenEndpoint);
+    await consumer.client.connect(producerB.client.listenEndpoint);
+    await consumer.waitForRemoteBus('tracks', 3000);
+
+    const first = await consumer.interest(query, { forceBus: true });
+    assertPositions(await waitForObjects(first, 4), {
+      'a-1': 10,
+      'a-2': 20,
+      'a-3': 30,
+      'b-1': 100
+    });
+    first.close();
+
+    const second = await consumer.interest(query, { forceBus: true });
+    assert.notEqual(second.id, first.id);
+    assertPositions(await waitForObjects(second, 4), {
+      'a-1': 10,
+      'a-2': 20,
+      'a-3': 30,
+      'b-1': 100
+    });
+
+    await publish(producerA, [
+      { id: 1, name: 'a-1', properties: { x: 11, y: 1 } },
+      { id: 2, name: 'a-2', properties: { x: 21, y: 2 } },
+      { id: 3, name: 'a-3', properties: { x: 31, y: 3 } }
+    ]);
+    await publish(producerB, [
+      { id: 1, name: 'b-1', properties: { x: 101, y: 10 } }
+    ]);
+
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const objects = second.objects();
+      try {
+        assertPositions(objects, {
+          'a-1': 11,
+          'a-2': 21,
+          'a-3': 31,
+          'b-1': 101
+        });
+        return;
+      } catch {
+        await wait(25);
+      }
+    }
+    assertPositions(second.objects(), {
+      'a-1': 11,
+      'a-2': 21,
+      'a-3': 31,
+      'b-1': 101
+    });
+  } finally {
+    await consumer.close().catch(() => {});
+    await producerA.close().catch(() => {});
+    await producerB.close().catch(() => {});
+  }
 });
 
 test('remote object changes expose SEN timestamps as nanosecond BigInts', () => {

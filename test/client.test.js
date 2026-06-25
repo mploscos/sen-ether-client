@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import net from 'node:net';
 import test from 'node:test';
 import { EtherClient } from '../lib/client.js';
+import { crc32 } from '../lib/crc32.js';
 
 async function waitFor(emitter, event, timeoutMs = 3000) {
   return await Promise.race([
@@ -59,6 +60,25 @@ async function canListenTcp() {
     }
   }
 }
+
+test('EtherClient allocates a fresh id when recreating the same interest query', () => {
+  const client = new EtherClient({ sessionName: 'js', appName: 'consumer', busMulticast: false });
+  const busName = 'tree';
+  const busId = crc32(busName);
+  client.buses.set(busId, {
+    busName,
+    busId,
+    participantId: 123,
+    interests: new Map(),
+    remoteInterests: new Map()
+  });
+
+  const first = client.startInterest(busName, 'SELECT * FROM js.tree');
+  client.stopInterest(busName, first.id);
+  const second = client.startInterest(busName, 'SELECT * FROM js.tree');
+
+  assert.notEqual(second.id, first.id);
+});
 
 test('EtherClient routes published objects between two JS participants', async t => {
   if (!await canListenTcp()) {
