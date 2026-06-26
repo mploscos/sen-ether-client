@@ -472,6 +472,52 @@ test('same remote object can belong to multiple interests on one bus', async () 
   assert.deepEqual(starChanges.map(change => change.name), ['latitude']);
 });
 
+test('published object without initial state is emitted when its type is known', () => {
+  const sen = new EventEmitter();
+  sen.client = {
+    requestTypes: () => {},
+    requestObjectStates: () => {}
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  const spec = {
+    qualifiedName: 'test.Track',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        properties: [
+          { id: propertyHash('latitude'), name: 'latitude', type: 'f64', category: 'dynamicRO' }
+        ]
+      }
+    }
+  };
+  const typeHash = 123;
+  bus.handleTypesInfoResponse({
+    types: [{
+      type: 'ClassSpecResponse',
+      classHash: typeHash,
+      spec,
+      dependentTypes: []
+    }]
+  });
+
+  const emitted = [];
+  interest.on('object', object => emitted.push(object));
+
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'track-42', className: spec.qualifiedName, typeHash, time: 1n }]
+    }]
+  });
+
+  assert.deepEqual(emitted.map(object => object.name), ['track-42']);
+  assert.equal(interest.get('track-42')?.isReadyForInterest(interest.id), true);
+});
+
 test('published objects from different owners can reuse object ids', () => {
   const sen = new EventEmitter();
   const typeRequests = [];
