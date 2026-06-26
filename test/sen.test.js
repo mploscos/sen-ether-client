@@ -209,6 +209,61 @@ test('remote object waitForType shares one listener for concurrent callers', asy
   assert.equal(object.listenerCount('type'), 0);
 });
 
+test('bus reconnect preparation removes visible objects once', () => {
+  const sen = new EventEmitter();
+  const bus = new SenBus(sen, 'hmi.loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  const object = new SenRemoteObject(bus, {
+    id: 42,
+    name: 'track-42',
+    className: 'test.Track',
+    typeHash: 123,
+    ownerId: 9,
+    interestId: interest.id
+  });
+  bus.objectsById.set(object.key, object);
+  interest.objectsById.set(object.key, object);
+
+  let interestRemoves = 0;
+  let busRemoves = 0;
+  let interestStale = 0;
+  let objectStale = 0;
+  interest.on('remove', removed => {
+    interestRemoves += 1;
+    assert.equal(removed, object);
+  });
+  bus.on('remove', removed => {
+    busRemoves += 1;
+    assert.equal(removed, object);
+  });
+  interest.on('stale', detail => {
+    interestStale += 1;
+    assert.equal(detail.reason, 'reconnect');
+  });
+  object.on('stale', detail => {
+    objectStale += 1;
+    assert.equal(detail.reason, 'reconnect');
+  });
+
+  bus.prepareReconnect();
+
+  assert.equal(interest.objects().length, 0);
+  assert.equal(bus.objects().length, 0);
+  assert.equal(interestRemoves, 1);
+  assert.equal(busRemoves, 1);
+  assert.equal(interestStale, 1);
+  assert.equal(objectStale, 1);
+
+  bus.prepareReconnect();
+
+  assert.equal(interestRemoves, 1);
+  assert.equal(busRemoves, 1);
+  assert.equal(interestStale, 1);
+  assert.equal(objectStale, 1);
+});
+
 test('single-session clients reject interests for another session', async () => {
   const sen = new Sen({ timeout: 1 });
   sen.target = { session: { name: 'hmi' } };
