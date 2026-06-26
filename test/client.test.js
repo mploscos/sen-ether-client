@@ -61,10 +61,11 @@ async function canListenTcp() {
   }
 }
 
-test('EtherClient allocates a fresh id when recreating the same interest query', () => {
+test('EtherClient uses SEN query hash as the default native interest id', () => {
   const client = new EtherClient({ sessionName: 'js', appName: 'consumer', busMulticast: false });
   const busName = 'tree';
   const busId = crc32(busName);
+  const query = 'SELECT * FROM js.tree';
   client.buses.set(busId, {
     busName,
     busId,
@@ -73,11 +74,16 @@ test('EtherClient allocates a fresh id when recreating the same interest query',
     remoteInterests: new Map()
   });
 
-  const first = client.startInterest(busName, 'SELECT * FROM js.tree');
-  client.stopInterest(busName, first.id);
-  const second = client.startInterest(busName, 'SELECT * FROM js.tree');
+  const first = client.startInterest(busName, query);
+  assert.equal(first.id, crc32(query));
 
-  assert.notEqual(second.id, first.id);
+  const simultaneous = client.startInterest(busName, query);
+  assert.notEqual(simultaneous.id, first.id);
+  client.stopInterest(busName, simultaneous.id);
+  client.stopInterest(busName, first.id);
+
+  const recreated = client.startInterest(busName, query);
+  assert.equal(recreated.id, crc32(query));
 });
 
 test('EtherClient routes published objects between two JS participants', async t => {

@@ -11,16 +11,16 @@ import { Sen } from 'sen-ether-client';
 
 const sen = await Sen.connect();
 
-const diagnostics = await sen.interest('SELECT * FROM hmi.diagnostics');
-const probe = await diagnostics.waitFor('EtherProbe');
+const objects = await sen.interest('SELECT * FROM session.bus');
+const object = await objects.waitFor('object-1');
 
-probe.on('change:label', ({ value }) => {
+object.on('change:label', ({ value }) => {
   console.log('label changed:', value);
 });
 
-console.log(await probe.get('label'));
-await probe.set('label', 'from-js');
-console.log(await probe.call('ping', ['hello']));
+console.log(await object.get('label'));
+await object.set('label', 'from-js');
+console.log(await object.call('ping', ['hello']));
 
 await sen.close();
 ```
@@ -85,7 +85,7 @@ explicitly:
 
 ```js
 const sen = await Sen.connect({
-  session: 'hmi',
+  session: 'session',
   tcpHub: '127.0.0.1:65222'
 });
 ```
@@ -100,7 +100,7 @@ For local multicast tests, select loopback explicitly:
 
 ```js
 const sen = await Sen.connect({
-  session: 'hmi',
+  session: 'session',
   interfaceAddress: '127.0.0.1',
   listenHost: '127.0.0.1',
   advertisedHost: '127.0.0.1'
@@ -116,8 +116,8 @@ configured interests.
 is inferred from the query:
 
 ```js
-const hmi = await sen.interest('SELECT * FROM hmi.diagnostics');
-const world = await sen.interest('SELECT * FROM world1.environment');
+const first = await sen.interest('SELECT * FROM session.bus');
+const second = await sen.interest('SELECT * FROM otherSession.otherBus');
 ```
 
 You can also navigate explicitly through sessions and buses:
@@ -127,13 +127,13 @@ const sen = await Sen.connect();
 
 console.log(sen.listSessions());
 console.log(await sen.discoverBuses());
-// [{ session: 'hmi', bus: 'diagnostics', qualified: 'hmi.diagnostics' }]
+// [{ session: 'session', bus: 'bus', qualified: 'session.bus' }]
 
-const hmi = await sen.session('hmi');
-console.log(hmi.listBuses());
+const session = await sen.session('session');
+console.log(session.listBuses());
 
-const diagnostics = await hmi.bus('diagnostics');
-const probe = await diagnostics.waitFor('EtherProbe');
+const bus = await session.bus('bus');
+const object = await bus.waitFor('object-1');
 ```
 
 `discoverBuses()` does not create interests and does not join any SEN bus. It
@@ -144,11 +144,11 @@ process connection, it waits up to `busDiscoverySettleMs` milliseconds.
 You can also connect to one explicit session:
 
 ```js
-const hmi = await Sen.connect({
-  session: 'hmi'
+const session = await Sen.connect({
+  session: 'session'
 });
 
-const diagnostics = await hmi.interest('SELECT * FROM hmi.diagnostics');
+const objects = await session.interest('SELECT * FROM session.bus');
 ```
 
 ## Interests
@@ -156,17 +156,17 @@ const diagnostics = await hmi.interest('SELECT * FROM hmi.diagnostics');
 Create an interest with a normal SEN query:
 
 ```js
-const tracks = await sen.interest('SELECT * FROM world1.environment');
+const objects = await sen.interest('SELECT * FROM session.bus');
 ```
 
 Listen for objects and changes:
 
 ```js
-tracks.on('object', object => {
+objects.on('object', object => {
   console.log(object.name, object.className);
 });
 
-tracks.on('change', ({ object, name, value }) => {
+objects.on('change', ({ object, name, value }) => {
   console.log(object.name, name, value);
 });
 ```
@@ -175,13 +175,13 @@ For browser gateways or high-frequency telemetry, batch changes and decode only
 the properties needed by the UI:
 
 ```js
-const tracks = await sen.interest('SELECT bus.Track FROM hmi.loadtest', {
+const objects = await sen.interest('SELECT demo.Object FROM session.bus', {
   properties: ['latitude', 'longitude', 'altitude', 'heading'],
   changeMode: 'batch',
   coalesce: true
 });
 
-tracks.on('changes', ({ changes }) => {
+objects.on('changes', ({ changes }) => {
   websocket.send(JSON.stringify(changes.map(({ object, name, value, timestampNs }) => ({
     object: object.name,
     name,
@@ -194,10 +194,10 @@ tracks.on('changes', ({ changes }) => {
 Get an object by name, id, class name, or predicate:
 
 ```js
-const aircraft = await tracks.waitFor('blue-air-1');
+const object = await objects.waitFor('object-1');
 
-const firstAircraft = await tracks.waitFor(
-  object => object.className === 'rpr.Aircraft'
+const firstDemoObject = await objects.waitFor(
+  object => object.className === 'demo.Object'
 );
 ```
 
@@ -277,7 +277,7 @@ Probe a bus:
 ```bash
 npx sen-ether-probe \
   --tcp-hub 127.0.0.1:65222 \
-  --bus hmi.diagnostics
+  --bus session.bus
 ```
 
 ## API

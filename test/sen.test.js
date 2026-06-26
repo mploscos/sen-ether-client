@@ -58,6 +58,24 @@ async function waitForObjects(interest, count, timeoutMs = 3000) {
   throw new Error(`timeout waiting for ${count} SEN objects; got ${interest.objects().length}`);
 }
 
+async function waitForObjectNames(interest, names, timeoutMs = 3000) {
+  const expected = [...names].sort();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const objects = interest.objects();
+    const actual = objects.map(object => object.name).sort();
+    if (
+      actual.length === expected.length
+      && actual.every((name, index) => name === expected[index])
+      && objects.every(object => Object.keys(object.snapshot).length)
+    ) {
+      return objects;
+    }
+    await wait(25);
+  }
+  throw new Error(`timeout waiting for SEN objects [${expected.join(', ')}]; got [${interest.objects().map(object => object.name).sort().join(', ')}]`);
+}
+
 function propertyUpdateBuffer(updates) {
   const writer = new SenBinaryWriter();
   for (const update of updates) {
@@ -618,7 +636,7 @@ test('recreated interest requests object state again for existing object ids', a
   assert.equal(stateRequests.length, 1);
   assert.equal(stateRequests[0].requests[0].interestId, 7);
   first.close();
-  assert.deepEqual(stopped, [{ bus: 'loadtest', id: 7 }]);
+  assert.deepEqual(stopped, [{ bus: 123, id: 7 }]);
   assert.equal(bus.objects().length, 0);
   assert.equal(bus.requestedTypeHashes.has(123), false);
 
@@ -693,15 +711,18 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
     })));
   };
   const byName = objects => new Map(objects.map(object => [object.name, object]));
-  const assertPositions = (objects, expected) => {
+  const assertPositions = (objects, expected, duplicateObjectIdOneOwners) => {
     const map = byName(objects);
     assert.equal(objects.length, Object.keys(expected).length);
     for (const [name, x] of Object.entries(expected)) {
       assert.equal(Number(map.get(name)?.snapshot.x), x, `unexpected x for ${name}`);
     }
-    assert.equal(objects.filter(object => object.id === 1).length, 2);
-    assert.equal(new Set(objects.filter(object => object.id === 1).map(object => object.ownerId)).size, 2);
+    if (duplicateObjectIdOneOwners !== undefined) {
+      assert.equal(objects.filter(object => object.id === 1).length, duplicateObjectIdOneOwners);
+      assert.equal(new Set(objects.filter(object => object.id === 1).map(object => object.ownerId)).size, duplicateObjectIdOneOwners);
+    }
   };
+  let producerC;
 
   try {
     await publish(producerA, [
@@ -723,23 +744,40 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
       'a-2': 20,
       'a-3': 30,
       'b-1': 100
-    });
+    }, 2);
     first.close();
 
     const second = await consumer.interest(query, { forceBus: true });
-    assert.notEqual(second.id, first.id);
+    assert.equal(second.id, first.id);
     assertPositions(await waitForObjects(second, 4), {
       'a-1': 10,
       'a-2': 20,
       'a-3': 30,
       'b-1': 100
-    });
+    }, 2);
 
-    await publish(producerA, [
-      { id: 1, name: 'a-1', properties: { x: 11, y: 1 } },
-      { id: 2, name: 'a-2', properties: { x: 21, y: 2 } },
-      { id: 3, name: 'a-3', properties: { x: 31, y: 3 } }
+    await producerA.close();
+    assertPositions(await waitForObjectNames(second, ['b-1']), {
+      'b-1': 100
+    }, 1);
+
+    producerC = await Sen.connect({ ...options, appName: 'producer-c' });
+    await publish(producerC, [
+      { id: 1, name: 'c-1', properties: { x: 1000, y: 100 } },
+      { id: 4, name: 'c-4', properties: { x: 4000, y: 400 } }
     ]);
+    await consumer.client.connect(producerC.client.listenEndpoint);
+    assertPositions(await waitForObjectNames(second, ['b-1', 'c-1', 'c-4']), {
+      'b-1': 100,
+      'c-1': 1000,
+      'c-4': 4000
+    }, 2);
+
+    await producerC.client.close();
+    assertPositions(await waitForObjectNames(second, ['b-1']), {
+      'b-1': 100
+    }, 1);
+
     await publish(producerB, [
       { id: 1, name: 'b-1', properties: { x: 101, y: 10 } }
     ]);
@@ -749,24 +787,19 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
       const objects = second.objects();
       try {
         assertPositions(objects, {
-          'a-1': 11,
-          'a-2': 21,
-          'a-3': 31,
           'b-1': 101
-        });
+        }, 1);
         return;
       } catch {
         await wait(25);
       }
     }
     assertPositions(second.objects(), {
-      'a-1': 11,
-      'a-2': 21,
-      'a-3': 31,
       'b-1': 101
-    });
+    }, 1);
   } finally {
     await consumer.close().catch(() => {});
+    await producerC?.close().catch(() => {});
     await producerA.close().catch(() => {});
     await producerB.close().catch(() => {});
   }

@@ -11,17 +11,16 @@
  * const sen = await Sen.connect();
  *
  * console.log(sen.listSessions());
- * const hmi = await sen.session('hmi');
- * console.log(hmi.listBuses());
+ * const session = await sen.session('session');
+ * console.log(session.listBuses());
  *
- * const diagnostics = await sen.interest('SELECT * FROM hmi.diagnostics');
- * const world = await sen.interest('SELECT * FROM world1.environment');
- * const probe = await diagnostics.waitFor('EtherProbe');
+ * const objects = await sen.interest('SELECT * FROM session.bus');
+ * const object = await objects.waitFor('object-1');
  *
- * probe.on('change:label', ({ value }) => console.log(value));
- * console.log(await probe.get('label'));
- * await probe.set('label', 'from-js');
- * console.log(await probe.call('ping', ['hello']));
+ * object.on('change:label', ({ value }) => console.log(value));
+ * console.log(await object.get('label'));
+ * await object.set('label', 'from-js');
+ * console.log(await object.call('ping', ['hello']));
  *
  * await sen.close();
  */
@@ -61,6 +60,7 @@
  * @property {string} [bus] Explicit bus name when it cannot be inferred from the query.
  * @property {boolean} [forceBus=false] Join without waiting for the remote process to announce the bus.
  * @property {number} [timeout] Operation timeout in ms.
+ * @property {number} [id] Optional native interest id. Defaults to CRC32(query).
  * @property {string[]|string} [properties] Optional property names to decode and emit.
  * @property {'individual'|'batch'|'both'} [changeMode='individual'] Change emission mode.
  * @property {number} [batchIntervalMs=16] Batched change flush interval in ms.

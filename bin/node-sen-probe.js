@@ -66,7 +66,7 @@ Options:
 Examples:
   sen-ether-probe --bus scenario.control
   sen-ether-probe --tcp-hub 127.0.0.1:64222 --bus scenario.control
-  sen-ether-probe --bus world1.environment --query "SELECT * FROM world1.environment"
+  sen-ether-probe --bus session.bus --query "SELECT * FROM session.bus"
 
 Environment:
   SEN_ETHER_DISCOVERY_PORT       Default multicast discovery port

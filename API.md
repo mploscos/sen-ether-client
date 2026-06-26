@@ -95,15 +95,15 @@ Preferred multi-session usage:
 ```js
 const sen = await Sen.connect();
 
-const hmi = await sen.interest('SELECT * FROM hmi.diagnostics');
-const world = await sen.interest('SELECT * FROM world1.environment');
+const first = await sen.interest('SELECT * FROM session.bus');
+const second = await sen.interest('SELECT * FROM otherSession.otherBus');
 ```
 
 TCP discovery hub usage:
 
 ```js
 const sen = await Sen.connect({
-  session: 'hmi',
+  session: 'session',
   tcpHub: '127.0.0.1:65222'
 });
 ```
@@ -116,7 +116,7 @@ Multicast discovery usage:
 
 ```js
 const sen = await Sen.connect({
-  session: 'hmi',
+  session: 'session',
   interfaceAddress: '127.0.0.1',
   listenHost: '127.0.0.1',
   advertisedHost: '127.0.0.1'
@@ -129,21 +129,21 @@ and received on the intended network device.
 Explicit single-session usage is still supported:
 
 ```js
-const hmi = await Sen.connect({ session: 'hmi' });
-await hmi.interest('SELECT * FROM hmi.diagnostics');
+const session = await Sen.connect({ session: 'session' });
+await session.interest('SELECT * FROM session.bus');
 ```
 
 If a SEN bus name itself contains dots and is not a session-qualified bus, pass
 it explicitly. This is useful for standalone scenarios that run in one Ether
-session but publish on a bus such as `scenario.environment`:
+session but publish on a bus such as `domain.bus`:
 
 ```js
-const scenario = await Sen.connect({
-  session: 'scenario'
+const session = await Sen.connect({
+  session: 'session'
 });
 
-const objects = await scenario.interest('SELECT * FROM scenario.environment', {
-  bus: 'scenario.environment',
+const objects = await session.interest('SELECT * FROM domain.bus', {
+  bus: 'domain.bus',
   forceBus: true
 });
 ```
@@ -164,20 +164,24 @@ Main methods:
 - `await sen.waitForObject(selector, options)`
 - `await sen.close()`
 
+By default, interest creation uses the SEN-native `CRC32(query)` value as the
+interest id. Pass `options.id` only when a caller must force a specific native
+interest id.
+
 Session and bus navigation:
 
 ```js
 const sen = await Sen.connect();
 
 console.log(await sen.discoverBuses());
-// [{ session: 'hmi', bus: 'diagnostics', qualified: 'hmi.diagnostics' }]
+// [{ session: 'session', bus: 'bus', qualified: 'session.bus' }]
 
 for (const sessionName of sen.listSessions()) {
   const session = await sen.session(sessionName);
   console.log(sessionName, session.listBuses());
 }
 
-const diagnostics = await sen.session('hmi').then(hmi => hmi.bus('diagnostics'));
+const bus = await sen.session('session').then(session => session.bus('bus'));
 ```
 
 `discoverBuses()` does not create interests and does not join any SEN bus. It
@@ -226,8 +230,8 @@ Main events:
 Returned by `await sen.interest(query)`.
 
 ```js
-const interest = await sen.interest('SELECT * FROM hmi.diagnostics');
-const object = await interest.waitFor('EtherProbe');
+const interest = await sen.interest('SELECT * FROM session.bus');
+const object = await interest.waitFor('object-1');
 ```
 
 Main methods:
@@ -251,7 +255,7 @@ For browser gateways or high-frequency telemetry, request only the properties
 you need and emit batches instead of one JS event per property update:
 
 ```js
-const tracks = await sen.interest('SELECT bus.Track FROM hmi.loadtest', {
+const objects = await sen.interest('SELECT demo.Object FROM session.bus', {
   properties: ['latitude', 'longitude', 'altitude', 'heading'],
   changeMode: 'batch',
   batchIntervalMs: 16,
@@ -261,7 +265,7 @@ const tracks = await sen.interest('SELECT bus.Track FROM hmi.loadtest', {
   coalesce: true
 });
 
-tracks.on('changes', ({ changes, dropped }) => {
+objects.on('changes', ({ changes, dropped }) => {
   // Send one compact WebSocket frame to the browser.
 });
 ```
@@ -309,7 +313,7 @@ Main events:
 64-bit timestamp precision. Convert it explicitly at JSON boundaries:
 
 ```js
-tracks.on('change', ({ object, name, value, timestampNs }) => {
+objects.on('change', ({ object, name, value, timestampNs }) => {
   websocket.send(JSON.stringify({
     object: object.name,
     name,
