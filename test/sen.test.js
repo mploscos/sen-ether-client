@@ -1151,6 +1151,117 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
   }
 });
 
+test('Sen JS published class specs announce dependent types', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-dependent-types-${process.pid}-${Date.now()}`;
+  const discoveryPort = 48000 + (process.pid % 1000);
+  const options = {
+    session,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: discoveryPort,
+    beamPeriodMs: 100
+  };
+
+  const metadataSpec = {
+    name: 'Metadata',
+    qualifiedName: 'demo.Metadata',
+    description: '',
+    data: {
+      type: 'StructTypeSpec',
+      value: {
+        fields: [
+          { name: 'label', description: '', type: 'string' },
+          { name: 'revision', description: '', type: 'u32' }
+        ]
+      }
+    }
+  };
+  const namesSpec = {
+    name: 'Names',
+    qualifiedName: 'demo.Names',
+    description: '',
+    data: {
+      type: 'SequenceTypeSpec',
+      value: { elementType: 'string' }
+    }
+  };
+  const baseSpec = {
+    name: 'BaseDevice',
+    qualifiedName: 'demo.BaseDevice',
+    description: '',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [
+          { name: 'names', description: '', category: 'dynamicRO', type: 'demo.Names', transportMode: 'confirmed', tags: [], checkedSet: false }
+        ],
+        methods: [],
+        events: [],
+        constructor: { name: '', description: '', args: [], returnType: '' },
+        isInterface: false
+      }
+    }
+  };
+  const deviceSpec = {
+    name: 'Device',
+    qualifiedName: 'demo.Device',
+    description: '',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: ['demo.BaseDevice'],
+        properties: [
+          { name: 'metadata', description: '', category: 'dynamicRO', type: 'demo.Metadata', transportMode: 'confirmed', tags: [], checkedSet: false }
+        ],
+        methods: [],
+        events: [],
+        constructor: { name: '', description: '', args: [], returnType: '' },
+        isInterface: false
+      }
+    }
+  };
+
+  const producer = await Sen.connect({ ...options, appName: 'producer' });
+  const consumer = await Sen.connect({ ...options, appName: 'consumer' });
+
+  try {
+    await producer.publishObjects('devices', {
+      id: 1,
+      name: 'device-with-dependent-types',
+      className: 'demo.Device',
+      spec: deviceSpec,
+      properties: {
+        names: ['primary', 'backup'],
+        metadata: { label: 'example', revision: 2 }
+      }
+    }, {
+      types: [metadataSpec, namesSpec, baseSpec]
+    });
+
+    await consumer.client.connect(producer.client.listenEndpoint);
+    await consumer.waitForRemoteBus('devices', 3000);
+
+    const interest = await consumer.interest(`SELECT * FROM ${session}.devices`, { forceBus: true });
+    const [object] = await waitForObjectNames(interest, ['device-with-dependent-types']);
+
+    assert.deepEqual(object.snapshot.names, ['primary', 'backup']);
+    assert.deepEqual(object.snapshot.metadata, { label: 'example', revision: 2 });
+  } finally {
+    await consumer.close().catch(() => {});
+    await producer.close().catch(() => {});
+  }
+});
+
 test('remote object changes expose SEN timestamps as nanosecond BigInts', () => {
   const { interest, object } = makeTypedObject();
   const changes = [];
