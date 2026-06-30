@@ -6,8 +6,8 @@ import { Sen, SenInterest, SenRemoteObject } from '../index.js';
 import { SenBus } from '../lib/sen.js';
 import { createProcessInfo, validateRemoteHello } from '../lib/client.js';
 import { SenBinaryWriter } from '../lib/codec.js';
-import { propertyHash } from '../lib/hash32.js';
-import { encodeValue } from '../lib/values.js';
+import { eventHash, propertyHash } from '../lib/hash32.js';
+import { encodeArguments, encodeValue } from '../lib/values.js';
 
 function helloForSession(sessionName, version = { kernel: 9, ether: 2 }) {
   return {
@@ -699,6 +699,196 @@ test('object state responses are ignored when owner id does not match', () => {
   });
 
   assert.equal(object.snapshot.latitude, 41.2);
+});
+
+test('runtime object updates fall back to object id when owner id is the local recipient', () => {
+  const sen = new EventEmitter();
+  sen.client = {
+    requestTypes: () => {},
+    requestObjectStates: () => {}
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'track-42', className: 'test.Track', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+
+  const object = interest.get('track-42');
+  object.spec = makeTypedObject().object.spec;
+
+  bus.handleRuntimeObjectUpdate({
+    ownerId: 12345,
+    update: {
+      objectId: object.id,
+      time: 2n,
+      properties: propertyUpdateBuffer([{ name: 'latitude', type: 'f64', value: 42.3 }])
+    }
+  });
+
+  assert.equal(object.snapshot.latitude, 42.3);
+});
+
+test('runtime events are routed using the remote owner id', () => {
+  const sen = new EventEmitter();
+  sen.client = {
+    requestTypes: () => {},
+    requestObjectStates: () => {}
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'student-42', className: 'school.Student', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+
+  const object = interest.get('student-42');
+  object.spec = {
+    qualifiedName: 'school.Student',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [],
+        methods: [],
+        events: [{
+          id: eventHash('saidSomething'),
+          name: 'saidSomething',
+          args: [{ name: 'words', type: 'string' }]
+        }]
+      }
+    }
+  };
+
+  const objectEvents = [];
+  const interestEvents = [];
+  const busEvents = [];
+  const senEvents = [];
+  object.on('saidSomething', event => objectEvents.push(event));
+  interest.on('event', event => interestEvents.push(event));
+  bus.on('event', event => busEvents.push(event));
+  sen.on('event', event => senEvents.push(event));
+
+  bus.handleRuntimeEvents({
+    ownerId: 77,
+    to: 12345,
+    events: [{
+      producerId: 42,
+      eventId: eventHash('saidSomething'),
+      creationTime: 2n,
+      argumentsBuffer: encodeArguments(['hello'], [{ name: 'words', type: 'string' }])
+    }]
+  });
+
+  assert.equal(objectEvents.length, 1);
+  assert.deepEqual(objectEvents[0].args, ['hello']);
+  assert.equal(interestEvents[0], objectEvents[0]);
+  assert.equal(busEvents[0], objectEvents[0]);
+  assert.equal(senEvents[0], objectEvents[0]);
+});
+
+test('runtime events fall back to producer id when owner id is the local recipient', () => {
+  const sen = new EventEmitter();
+  sen.client = {
+    requestTypes: () => {},
+    requestObjectStates: () => {}
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'student-42', className: 'school.Student', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+
+  const object = interest.get('student-42');
+  object.spec = {
+    qualifiedName: 'school.Student',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [],
+        methods: [],
+        events: [{
+          id: eventHash('saidSomething'),
+          name: 'saidSomething',
+          args: [{ name: 'words', type: 'string' }]
+        }]
+      }
+    }
+  };
+
+  const objectEvents = [];
+  object.on('saidSomething', event => objectEvents.push(event));
+
+  bus.handleRuntimeEvents({
+    ownerId: 12345,
+    to: 12345,
+    events: [{
+      producerId: 42,
+      eventId: eventHash('saidSomething'),
+      creationTime: 2n,
+      argumentsBuffer: encodeArguments(['hello'], [{ name: 'words', type: 'string' }])
+    }]
+  });
+
+  assert.equal(objectEvents.length, 1);
+  assert.deepEqual(objectEvents[0].args, ['hello']);
+});
+
+test('runtime event owner fallback is ignored when producer id is ambiguous', () => {
+  const sen = new EventEmitter();
+  sen.client = {
+    requestTypes: () => {},
+    requestObjectStates: () => {}
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  for (const [ownerId, name] of [[77, 'student-42-a'], [88, 'student-42-b']]) {
+    bus.handleObjectsPublished({
+      ownerId,
+      discoveries: [{
+        interestId: interest.id,
+        objects: [{ id: 42, name, className: 'school.Student', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+      }]
+    });
+  }
+
+  let emitted = 0;
+  for (const object of interest.objects()) {
+    object.on('event', () => {
+      emitted += 1;
+    });
+  }
+
+  bus.handleRuntimeEvents({
+    ownerId: 12345,
+    events: [{
+      producerId: 42,
+      eventId: eventHash('saidSomething'),
+      creationTime: 2n,
+      argumentsBuffer: encodeArguments(['hello'], [{ name: 'words', type: 'string' }])
+    }]
+  });
+
+  assert.equal(emitted, 0);
 });
 
 test('recreated interest requests object state again for existing object ids', async () => {
