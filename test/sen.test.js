@@ -797,6 +797,61 @@ test('runtime events are routed using the remote owner id', () => {
   assert.equal(senEvents[0], objectEvents[0]);
 });
 
+test('duplicate runtime events are emitted once', () => {
+  const sen = new EventEmitter();
+  sen.client = {
+    requestTypes: () => {},
+    requestObjectStates: () => {}
+  };
+  const bus = new SenBus(sen, 'loadtest', 123);
+  const interest = new SenInterest(bus, 7, 'SELECT * FROM hmi.loadtest');
+  bus.interests.set(interest.id, interest);
+
+  bus.handleObjectsPublished({
+    ownerId: 77,
+    discoveries: [{
+      interestId: interest.id,
+      objects: [{ id: 42, name: 'student-42', className: 'school.Student', typeHash: 123, state: Buffer.alloc(0), time: 1n }]
+    }]
+  });
+
+  const object = interest.get('student-42');
+  object.spec = {
+    qualifiedName: 'school.Student',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [],
+        methods: [],
+        events: [{
+          id: eventHash('saidSomething'),
+          name: 'saidSomething',
+          args: [{ name: 'words', type: 'string' }]
+        }]
+      }
+    }
+  };
+
+  const objectEvents = [];
+  object.on('saidSomething', event => objectEvents.push(event));
+
+  const runtimeEvent = {
+    ownerId: 77,
+    events: [{
+      producerId: 42,
+      eventId: eventHash('saidSomething'),
+      creationTime: 2n,
+      argumentsBuffer: encodeArguments(['hello'], [{ name: 'words', type: 'string' }])
+    }]
+  };
+  bus.handleRuntimeEvents(runtimeEvent);
+  bus.handleRuntimeEvents(runtimeEvent);
+
+  assert.equal(objectEvents.length, 1);
+  assert.deepEqual(objectEvents[0].args, ['hello']);
+});
+
 test('runtime events fall back to producer id when owner id is the local recipient', () => {
   const sen = new EventEmitter();
   sen.client = {

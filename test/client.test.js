@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import net from 'node:net';
 import test from 'node:test';
-import { EtherClient } from '../lib/client.js';
+import { decodeBusMessage } from '../lib/bus.js';
+import { EtherClient, decodeMulticastBusDatagram } from '../lib/client.js';
+import { SenBinaryWriter } from '../lib/codec.js';
 import { crc32 } from '../lib/crc32.js';
 
 async function waitFor(emitter, event, timeoutMs = 3000) {
@@ -84,6 +86,27 @@ test('EtherClient uses SEN query hash as the default native interest id', () => 
 
   const recreated = client.startInterest(busName, query);
   assert.equal(recreated.id, crc32(query));
+});
+
+test('decodeMulticastBusDatagram reads native SEN bus multicast payloads', () => {
+  const runtimeEvents = new SenBinaryWriter();
+  runtimeEvents.writeUInt8(5);
+  runtimeEvents.writeUInt32(1);
+  runtimeEvents.writeUInt32(2);
+  runtimeEvents.writeInt64(3n);
+  runtimeEvents.writeUInt32(0);
+
+  const payload = runtimeEvents.toBuffer();
+  const datagram = Buffer.alloc(8 + payload.length);
+  datagram.writeUInt32LE(1234, 0);
+  datagram.writeUInt32LE(payload.length, 4);
+  payload.copy(datagram, 8);
+
+  const decoded = decodeMulticastBusDatagram(datagram);
+  assert.equal(decoded.processId, 1234);
+  assert.equal(decoded.payloadSize, payload.length);
+  assert.deepEqual(decoded.message, payload);
+  assert.equal(decodeBusMessage(decoded.message).categoryName, 'runtimeEvents');
 });
 
 test('EtherClient routes published objects between two JS participants', async t => {
