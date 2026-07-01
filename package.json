@@ -1,6 +1,6 @@
 {
   "name": "sen-ether-client",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Pure JavaScript SEN client for existing kernels over ether",
   "senCompatibility": {
     "kernelProtocolVersion": 9,

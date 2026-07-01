@@ -230,6 +230,32 @@ For exact SEN typing, pass a `spec` on each object and any dependent custom
 types through `types`. This is required for structured values such as structs,
 sequences, enums and variants.
 
+If the class spec declares methods, a JavaScript producer can implement them
+with local handlers:
+
+```js
+await sen.publishObjects('session.bus', {
+  name: 'demo-counter',
+  className: 'demo.Counter',
+  spec: counterSpec,
+  properties: { count: 1 },
+  methods: {
+    increment(delta) {
+      const count = this.state.count + delta;
+      this.update({ count });
+      return count;
+    }
+  }
+});
+```
+
+The handler arguments and return value are encoded with the SEN method spec.
+Use `this.update(patch)` inside a handler, or update from outside with:
+
+```js
+await sen.updatePublishedObject('session.bus', 'demo-counter', { count: 2 });
+```
+
 ## Objects
 
 Read and write properties:

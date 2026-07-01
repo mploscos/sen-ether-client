@@ -6,7 +6,7 @@ import { Sen, SenInterest, SenRemoteObject } from '../index.js';
 import { SenBus } from '../lib/sen.js';
 import { createProcessInfo, validateRemoteHello } from '../lib/client.js';
 import { SenBinaryWriter } from '../lib/codec.js';
-import { eventHash, propertyHash } from '../lib/hash32.js';
+import { eventHash, methodHash, propertyHash } from '../lib/hash32.js';
 import { encodeArguments, encodeValue } from '../lib/values.js';
 
 function helloForSession(sessionName, version = { kernel: 9, ether: 2 }) {
@@ -1256,6 +1256,84 @@ test('Sen JS published class specs announce dependent types', async t => {
 
     assert.deepEqual(object.snapshot.names, ['primary', 'backup']);
     assert.deepEqual(object.snapshot.metadata, { label: 'example', revision: 2 });
+  } finally {
+    await consumer.close().catch(() => {});
+    await producer.close().catch(() => {});
+  }
+});
+
+test('Sen JS published objects can handle remote method calls and publish updates', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-local-methods-${process.pid}-${Date.now()}`;
+  const discoveryPort = 49000 + (process.pid % 1000);
+  const options = {
+    session,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: discoveryPort,
+    beamPeriodMs: 100
+  };
+  const counterSpec = {
+    name: 'Counter',
+    qualifiedName: 'demo.Counter',
+    description: '',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [
+          { id: propertyHash('count'), name: 'count', description: '', category: 'dynamicRO', type: 'i32', transportMode: 'confirmed', tags: [], checkedSet: false }
+        ],
+        methods: [
+          { id: methodHash('increment'), name: 'increment', description: '', args: [{ name: 'delta', type: 'i32' }], returnType: 'i32', transportMode: 'confirmed', tags: [], localOnly: false }
+        ],
+        events: [],
+        constructor: { name: '', description: '', args: [], returnType: '' },
+        isInterface: false
+      }
+    }
+  };
+  const producer = await Sen.connect({ ...options, appName: 'producer' });
+  const consumer = await Sen.connect({ ...options, appName: 'consumer' });
+
+  try {
+    await producer.publishObjects('devices', {
+      id: 1,
+      name: 'counter',
+      className: 'demo.Counter',
+      spec: counterSpec,
+      properties: { count: 1 },
+      methods: {
+        increment(delta) {
+          const count = this.state.count + delta;
+          this.update({ count });
+          return count;
+        }
+      }
+    });
+
+    await consumer.client.connect(producer.client.listenEndpoint);
+    await consumer.waitForRemoteBus('devices', 3000);
+
+    const interest = await consumer.interest(`SELECT * FROM ${session}.devices`, { forceBus: true });
+    const [counter] = await waitForObjectNames(interest, ['counter']);
+
+    assert.equal(counter.snapshot.count, 1);
+    assert.equal(await counter.call('increment', [4]), 5);
+
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && counter.snapshot.count !== 5) {
+      await wait(25);
+    }
+    assert.equal(counter.snapshot.count, 5);
   } finally {
     await consumer.close().catch(() => {});
     await producer.close().catch(() => {});

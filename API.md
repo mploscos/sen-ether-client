@@ -153,6 +153,7 @@ Main methods:
 - `await sen.connect(options)`
 - `await sen.interest(query, options)`
 - `await sen.publishObjects(busName, objects, options)`
+- `await sen.updatePublishedObject(busName, object, patch, options)`
 - `await sen.removePublishedObjects(busName, objects, options)`
 - `await sen.session(name)`
 - `await sen.discoverBuses(options)`
@@ -205,6 +206,32 @@ await sen.publishObjects('session.bus', [{
     running: true
   }
 }]);
+```
+
+Published objects can expose local JavaScript handlers for methods declared in
+their SEN class spec. The handler receives decoded SEN arguments as positional
+JavaScript arguments and can publish property updates through `this.update()`.
+
+```js
+await sen.publishObjects('session.bus', {
+  name: 'demo-counter',
+  className: 'demo.Counter',
+  spec: counterSpec,
+  properties: { count: 1 },
+  methods: {
+    increment(delta) {
+      const count = this.state.count + delta;
+      this.update({ count });
+      return count;
+    }
+  }
+});
+```
+
+Outside a method handler, update a local object with:
+
+```js
+await sen.updatePublishedObject('session.bus', 'demo-counter', { count: 2 });
 ```
 
 When no `spec` is provided, `sen-ether-client` infers a simple ClassTypeSpec
