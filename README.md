@@ -86,6 +86,7 @@ explicitly:
 ```js
 const sen = await Sen.connect({
   session: 'session',
+  announceDiscovery: true,
   tcpHub: '127.0.0.1:65222'
 });
 ```

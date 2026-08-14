@@ -1103,6 +1103,7 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
     }, 2);
 
     await producerA.close();
+    assert.deepEqual(consumer.listBuses(), ['tracks']);
     assertPositions(await waitForObjectNames(second, ['b-1']), {
       'b-1': 100
     }, 1);
@@ -1120,6 +1121,7 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
     }, 2);
 
     await producerC.client.close();
+    assert.deepEqual(consumer.listBuses(), ['tracks']);
     assertPositions(await waitForObjectNames(second, ['b-1']), {
       'b-1': 100
     }, 1);

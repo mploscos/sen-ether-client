@@ -88,6 +88,52 @@ test('EtherClient uses SEN query hash as the default native interest id', () => 
   assert.equal(recreated.id, crc32(query));
 });
 
+test('EtherClient closes a discovered connection when presence expires', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const publisher = new EtherClient({
+    sessionName: 'js-presence',
+    appName: 'publisher',
+    busMulticast: false,
+    multicastDiscovery: false
+  });
+  const consumer = new EtherClient({
+    sessionName: 'js-presence',
+    appName: 'consumer',
+    busMulticast: false,
+    multicastDiscovery: false,
+    presenceTimeoutMs: 100,
+    presenceCheckIntervalMs: 50
+  });
+
+  try {
+    publisher.on('warning', () => {});
+    consumer.on('warning', () => {});
+    await publisher.start({ listenHost: '127.0.0.1', listenPort: 0 });
+    await publisher.joinBus('tree');
+    await consumer.start({ listenHost: '127.0.0.1', listenPort: 0 });
+
+    const joined = waitFor(consumer, 'busJoined');
+    await consumer.connect({ info: publisher.processInfo, endpoints: [publisher.listenEndpoint] });
+    await joined;
+
+    const connection = [...consumer.connections.values()]
+      .find(item => item.remoteProcessInfo?.appName === 'publisher');
+    assert.ok(connection);
+    connection.discoveryLastSeen = Date.now() - 1000;
+
+    const [left] = await waitFor(consumer, 'busLeft', 3000);
+    assert.equal(left.busName, 'tree');
+    assert.equal(left.reason, 'connectionClose');
+  } finally {
+    await publisher.close();
+    await consumer.close();
+  }
+});
+
 test('decodeMulticastBusDatagram reads native SEN bus multicast payloads', () => {
   const runtimeEvents = new SenBinaryWriter();
   runtimeEvents.writeUInt8(5);

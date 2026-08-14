@@ -40,12 +40,13 @@ Connection options:
   discovery.
 - `tcpHub`: optional SEN TCP discovery hub as `host:port`. If omitted,
   multicast discovery is used. When combined with `session`, the client opens
-  a local Ether listener, sends presence beams to the hub and connects to
-  compatible peers announced by the hub.
+  a local Ether listener and connects to compatible peers announced by the
+  hub.
 - `session`: optional SEN session name. If omitted, `Sen` can use queries for
-  different sessions and connects to each one on demand. When provided, the
-  client also acts as an active Ether process and announces itself through the
-  selected discovery transport.
+  different sessions and connects to each one on demand.
+- `announceDiscovery`: emit presence beams for this process. `Sen` defaults to
+  `false`, so consumers are not rediscovered as producers. Set it to `true`
+  for a process that publishes objects and must be discovered by peers.
 - `multicastDiscovery`: enable active multicast presence beaming when no
   `tcpHub` is configured. Defaults to `true`.
 - `group`: multicast discovery group. Defaults to `239.255.0.44`.
@@ -61,6 +62,9 @@ Connection options:
 - `timeout`: discovery and operation timeout in ms.
 - `discoverySettleMs`: discovery settle time after the first process is found.
   Defaults to `100`.
+- `targetDiscoverySettleMs`: target collection window when connecting without a
+  fixed session. Defaults to `1000`, matching SEN Ether's default beam period.
+  Increase it when producers use a larger `beamPeriod`.
 - `busDiscoverySettleMs`: max wait after a lightweight session connection while
   bus announcements arrive. Defaults to at least `300`.
 - `reconnect`: whether to reconnect and restart interests.
