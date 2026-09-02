@@ -190,6 +190,63 @@ test('EtherClient routes published objects between two JS participants', async t
   }
 });
 
+test('EtherClient keeps existing interests active when joining a second bus', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const publisher = new EtherClient({ sessionName: 'js', appName: 'publisher', busMulticast: false });
+  const consumer = new EtherClient({ sessionName: 'js', appName: 'consumer', busMulticast: false });
+  const busNames = ['facpl.hmi', 'hmi.hud'];
+
+  try {
+    await publisher.start({ listenHost: '127.0.0.1', listenPort: 0 });
+    await consumer.start({ listenHost: '127.0.0.1', listenPort: 0 });
+    for (const busName of busNames) {
+      await publisher.joinBus(busName);
+      await consumer.joinBus(busName);
+    }
+    await publisher.connect(consumer.listenEndpoint);
+    await waitFor(publisher, 'ready');
+
+    const received = new Map();
+    const bothPublished = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('timeout waiting for two bus publications')), 3000);
+      consumer.on('objectsPublished', event => {
+        received.set(event.bus.busName, event);
+        if (received.size === busNames.length) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+
+    consumer.startInterest('facpl.hmi', 'SELECT * FROM js.facpl.hmi', { id: 101 });
+    consumer.startInterest('hmi.hud', 'SELECT * FROM js.hmi.hud', { id: 102 });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    publisher.publishObjects('facpl.hmi', {
+      name: 'Bandit_1',
+      className: 'demo.Track',
+      properties: { latitude: 39.16 }
+    });
+    publisher.publishObjects('hmi.hud', {
+      name: 'AircraftInfo',
+      className: 'demo.AircraftInfo',
+      properties: { altitude: 9200 }
+    });
+
+    await bothPublished;
+    assert.equal(consumer.buses.size, 2);
+    assert.equal(received.get('facpl.hmi').discoveries[0].interestId, 101);
+    assert.equal(received.get('hmi.hud').discoveries[0].interestId, 102);
+  } finally {
+    await publisher.close();
+    await consumer.close();
+  }
+});
+
 test('EtherClient discovers JS peers through a TCP discovery hub', async t => {
   if (!await canListenTcp()) {
     t.skip('TCP listen is not permitted in this test environment');

@@ -3,12 +3,12 @@
 Public import:
 
 ```js
-import { Sen, SenInterest, SenRemoteObject } from 'sen-ether-client';
+import { Sen, SenInterest, SenPublishedObject, SenRemoteObject } from 'sen-ether-client';
 ```
 
 ## Compatibility
 
-`sen-ether-client@0.1.x` and `sen-ether-client@0.2.x` support:
+`sen-ether-client@0.1.x`, `sen-ether-client@0.2.x`, and `sen-ether-client@0.3.x` support:
 
 - kernel protocol `9`
 - ether protocol `2`
@@ -21,8 +21,9 @@ The protocol STL files are included in `resources/protocol` as the source for
 the codec. The SEN release noted in that folder is informational; it is not a
 compatibility check.
 
-The generated protocol module is loaded at runtime; STL parsing is a maintenance
-step, not part of connection or message decoding.
+The bundled protocol module is pre-generated. Application STL is parsed only
+when you explicitly call `Sen.loadStl()`; publishing and receiving updates use
+the resolved registry already held in memory.
 
 ## Sen
 
@@ -45,8 +46,8 @@ Connection options:
 - `session`: optional SEN session name. If omitted, `Sen` can use queries for
   different sessions and connects to each one on demand.
 - `announceDiscovery`: emit presence beams for this process. `Sen` defaults to
-  `false`, so consumers are not rediscovered as producers. Set it to `true`
-  for a process that publishes objects and must be discovered by peers.
+  `false`. Set it to `true` for a process that publishes objects and must be
+  discovered by peers.
 - `multicastDiscovery`: enable active multicast presence beaming when no
   `tcpHub` is configured. Defaults to `true`.
 - `group`: multicast discovery group. Defaults to `239.255.0.44`.
@@ -66,7 +67,7 @@ Connection options:
   fixed session. Defaults to `1000`, matching SEN Ether's default beam period.
   Increase it when producers use a larger `beamPeriod`.
 - `busDiscoverySettleMs`: max wait after a lightweight session connection while
-  bus announcements arrive. Defaults to at least `300`.
+  bus announcements arrive. Defaults to at least `1000`.
 - `reconnect`: whether to reconnect and restart interests.
 - `reconnectDelayMs`: delay between reconnect attempts.
 - `maxReconnectAttempts`: maximum reconnect attempts. Defaults to `0`, which
@@ -155,7 +156,10 @@ const objects = await session.interest('SELECT * FROM domain.bus', {
 Main methods:
 
 - `await sen.connect(options)`
+- `await Sen.loadStl(sourcePath, options)`
 - `await sen.interest(query, options)`
+- `await sen.publish(busName, object, options)`
+- `await sen.publishObject(busName, object, options)`
 - `await sen.publishObjects(busName, objects, options)`
 - `await sen.updatePublishedObject(busName, object, patch, options)`
 - `await sen.removePublishedObjects(busName, objects, options)`
@@ -168,6 +172,20 @@ Main methods:
 - `sen.getObject(selector)`
 - `await sen.waitForObject(selector, options)`
 - `await sen.close()`
+
+### Load STL
+
+```js
+const types = await Sen.loadStl('./stl', {
+  includePaths: ['./shared-stl']
+});
+const sen = await Sen.connect({ types });
+```
+
+`Sen.loadStl()` loads one STL file or a directory, resolves its imports, and
+returns a reusable registry. It is a Node.js filesystem helper; the parser and
+resolver themselves are pure JavaScript. Load once during startup, rather than
+while publishing objects.
 
 By default, interest creation uses the SEN-native `CRC32(query)` value as the
 interest id. Pass `options.id` only when a caller must force a specific native
@@ -193,7 +211,33 @@ const bus = await sen.session('session').then(session => session.bus('bus'));
 does open a lightweight process connection per discovered session, because SEN
 presence beams announce sessions/processes but not the bus list.
 
-Publishing local objects:
+### Publish local objects
+
+For one long-lived application object, prefer `publish()`. It returns a
+`SenPublishedObject` with `update(patch)` and `remove()`:
+
+```js
+const types = await Sen.loadStl('./stl');
+const sen = await Sen.connect({
+  session: 'session',
+  announceDiscovery: true,
+  types
+});
+
+const counter = await sen.publish('devices', {
+  name: 'demo-counter',
+  className: 'demo.Counter',
+  properties: { count: 1 }
+});
+
+await counter.update({ count: 2 });
+await counter.remove();
+```
+
+`publishObjects()` is useful when publishing several objects at once.
+`publishObject()` returns the lower-level publication record. Both remain
+available for code that manages objects through
+`updatePublishedObject()`/`removePublishedObjects()`.
 
 ```js
 const sen = await Sen.connect({
@@ -212,8 +256,8 @@ await sen.publishObjects('session.bus', [{
 }]);
 ```
 
-Published objects can expose local JavaScript handlers for methods declared in
-their SEN class spec. The handler receives decoded SEN arguments as positional
+Published objects can expose JavaScript handlers for methods declared in their
+SEN class spec. The handler receives decoded SEN arguments as positional
 JavaScript arguments and can publish property updates through `this.update()`.
 
 ```js
@@ -238,10 +282,19 @@ Outside a method handler, update a local object with:
 await sen.updatePublishedObject('session.bus', 'demo-counter', { count: 2 });
 ```
 
-When no `spec` is provided, `sen-ether-client` infers a simple ClassTypeSpec
-from scalar `properties`. For objects with nested structs, sequences, enums or
-aliases, pass the exact SEN `spec` and dependent `types` so consumers can decode
-the state with the same model as native SEN producers.
+For an STL property declared `writable`, consumers use
+`await object.set('property', value)`. The publisher handles its generated
+`setNext<Property>` operation automatically and broadcasts the property update.
+No `methods` entry is required. Add a matching handler only when the
+application needs custom validation or side effects.
+
+On a root producer without `session`, the first segment of `publish()`'s bus
+name is the session and the rest is the local bus. Pass `{ session }` when the
+local bus itself contains dots. Interest query handling is unchanged.
+
+When no `spec` is provided, `sen-ether-client` first looks up `className` in
+the `types` passed to `Sen.connect`; it falls back to scalar-property inference
+only when no matching STL class or explicit spec is supplied.
 
 Main events:
 

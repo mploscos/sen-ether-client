@@ -1,29 +1,6 @@
 # sen-ether-client
 
-JavaScript client for SEN from Node.js.
-
-[SEN](https://github.com/airbus/sen) is a general-purpose, distributed,
-object-oriented system for applications that demand high modularity and rich
-communication.
-
-```js
-import { Sen } from 'sen-ether-client';
-
-const sen = await Sen.connect();
-
-const objects = await sen.interest('SELECT * FROM session.bus');
-const object = await objects.waitFor('object-1');
-
-object.on('change:label', ({ value }) => {
-  console.log('label changed:', value);
-});
-
-console.log(await object.get('label'));
-await object.set('label', 'from-js');
-console.log(await object.call('ping', ['hello']));
-
-await sen.close();
-```
+Connect Node.js applications to heterogeneous [Sen](https://github.com/airbus/sen) instances through the ether component. Read live data, subscribe to changes, call methods, write properties declared as writable, and publish JavaScript objects using Sen types. sen-ether-client is pure JavaScript, with no native bindings or local Sen installation required
 
 ## Install
 
@@ -31,288 +8,187 @@ await sen.close();
 npm install sen-ether-client
 ```
 
-## Compatibility
+## Read Sen objects
 
-`sen-ether-client` speaks SEN ether directly, so compatibility is tied to SEN protocol
-versions, not to a specific SEN release name.
-
-| sen-ether-client | Kernel protocol | Ether protocol |
-| --- | ---: | ---: |
-| 0.1.x | 9 | 2 |
-| 0.2.x | 9 | 2 |
-
-If a remote kernel reports another kernel or ether protocol version during the
-SEN handshake, `sen-ether-client` treats it as incompatible until that protocol version
-is explicitly supported.
-
-The protocol STL files used to maintain this codec are shipped in
-`resources/protocol`. The source SEN release recorded there is informational;
-runtime compatibility is checked only with the kernel and ether protocol
-numbers announced by the remote process.
-
-The runtime imports generated protocol constants from those STL files, so the
-hot path does not parse STL while receiving updates.
-
-## Connect
-
-By default, `sen-ether-client` uses SEN ether multicast discovery and connects to the
-visible SEN processes:
+Connect, create an interest, and wait for the object you need:
 
 ```js
+import { Sen } from 'sen-ether-client';
+
 const sen = await Sen.connect();
+const board = await sen.interest('SELECT * FROM chess.board');
+const knight = await board.waitFor('white-knight-b1');
+
+console.log(knight.snapshot.square);
+
+knight.on('change:square', ({ value }) => {
+  console.log('square:', value);
+});
+
+await sen.close();
 ```
 
-When a `session` is provided, the client also behaves as an active Ether
-process: it opens a TCP listener, announces its presence through multicast
-discovery, and connects to compatible peers announced on the same session.
+The session and bus are the two parts of `chess.board`. A single `Sen` instance
+can create interests in several sessions.
 
-If your SEN ether discovery port is configured through SEN's environment,
-`sen-ether-client` reads the same variable:
+## Publish objects from STL
+
+Load STL once, pass the resulting registry when connecting, then publish by
+class name. The client finds the class and every type it depends on
+automatically.
+
+```js
+import { Sen } from 'sen-ether-client';
+
+const types = await Sen.loadStl('./stl');
+const sen = await Sen.connect({
+  session: 'chess',
+  announceDiscovery: true,
+  types
+});
+
+const knight = await sen.publish('board', {
+  name: 'white-knight-b1',
+  className: 'chess.Piece',
+  properties: {
+    color: 'white',
+    kind: 'knight',
+    square: 'b1'
+  }
+});
+
+await knight.update({ square: 'c3' });
+await knight.remove();
+await sen.close();
+```
+
+`publish()` is the usual producer API. It returns a handle with `update(patch)`
+and `remove()`, and retains the object if the local session reconnects. An
+update sends only the properties in its patch; you do not need to repeat the
+full object state.
+
+With a root client that has no `session`, use a qualified bus name such as
+`chess.board`. Its first segment is the session and the remaining segment is the
+bus. This is useful when one process publishes in several Sen sessions.
+
+### Writable properties
+
+An STL property marked `writable` can be changed by a remote consumer without
+adding a JavaScript method handler to the publisher:
+
+```js
+const board = await sen.interest('SELECT * FROM chess.board');
+const knight = await board.waitFor('white-knight-b1');
+
+await knight.set('square', 'c3');
+```
+
+The publisher updates the property and broadcasts its normal Sen update. Add a
+`setNextSquare` handler only when the application needs custom validation or
+side effects. Application commands such as `accept` or `delete` remain normal
+methods under `methods` when publishing.
+
+## Listen for updates
+
+```js
+const objects = await sen.interest('SELECT * FROM chess.board');
+
+objects.on('object', object => {
+  console.log('appeared:', object.name);
+});
+
+objects.on('change', ({ object, name, value }) => {
+  console.log(object.name, name, value);
+});
+
+objects.on('remove', object => {
+  console.log('removed:', object.name);
+});
+```
+
+For high-rate data, request only the properties used by the UI and receive
+batches:
+
+```js
+const objects = await sen.interest('SELECT * FROM chess.board', {
+  properties: ['color', 'kind', 'square'],
+  changeMode: 'batch',
+  coalesce: true
+});
+
+objects.on('changes', ({ changes }) => {
+  // Forward one compact update to a browser or another consumer.
+});
+```
+
+## Connections
+
+The default connection uses normal Sen multicast discovery. When Sen defines a
+different discovery port, use the same environment variable:
 
 ```bash
 export SEN_ETHER_DISCOVERY_PORT=60543
 ```
 
-For machines with more than one network interface, select the multicast
-interface explicitly with either its IPv4 address or interface name:
-
-```js
-const sen = await Sen.connect({ interfaceAddress: 'enp0s25' });
-```
-
-If your setup uses a SEN TCP discovery hub instead of multicast, pass it
-explicitly:
+For local multicast testing, select loopback explicitly:
 
 ```js
 const sen = await Sen.connect({
-  session: 'session',
-  announceDiscovery: true,
-  tcpHub: '127.0.0.1:65222'
-});
-```
-
-With a `session` and `tcpHub`, `sen-ether-client` acts as an active Ether
-process: it opens a TCP listener, announces a SEN presence beam to the hub, and
-connects to compatible peers announced by the hub. This allows Node.js
-producers and consumers to discover each other without a native SEN process
-brokering their bus messages.
-
-For local multicast tests, select loopback explicitly:
-
-```js
-const sen = await Sen.connect({
-  session: 'session',
+  session: 'chess',
   interfaceAddress: '127.0.0.1',
   listenHost: '127.0.0.1',
   advertisedHost: '127.0.0.1'
 });
 ```
 
-Connected sessions are monitored through SEN ether presence beams. If the
-remote process stops announcing itself for `presenceTimeoutMs` milliseconds
-(default `5000`), the client closes the stale connection and restarts the
-configured interests.
-
-`sen-ether-client` can work with several SEN sessions from the same client. The session
-is inferred from the query:
+If the installation uses a TCP discovery hub instead, pass its address:
 
 ```js
-const first = await sen.interest('SELECT * FROM session.bus');
-const second = await sen.interest('SELECT * FROM otherSession.otherBus');
-```
-
-You can also navigate explicitly through sessions and buses:
-
-```js
-const sen = await Sen.connect();
-
-console.log(sen.listSessions());
-console.log(await sen.discoverBuses());
-// [{ session: 'session', bus: 'bus', qualified: 'session.bus' }]
-
-const session = await sen.session('session');
-console.log(session.listBuses());
-
-const bus = await session.bus('bus');
-const object = await bus.waitFor('object-1');
-```
-
-`discoverBuses()` does not create interests and does not join any SEN bus. It
-uses discovery to find sessions and opens lightweight process connections only
-to read bus announcements. If buses are not announced immediately after the
-process connection, it waits up to `busDiscoverySettleMs` milliseconds.
-
-You can also connect to one explicit session:
-
-```js
-const session = await Sen.connect({
-  session: 'session'
-});
-
-const objects = await session.interest('SELECT * FROM session.bus');
-```
-
-## Interests
-
-Create an interest with a normal SEN query:
-
-```js
-const objects = await sen.interest('SELECT * FROM session.bus');
-```
-
-Listen for objects and changes:
-
-```js
-objects.on('object', object => {
-  console.log(object.name, object.className);
-});
-
-objects.on('change', ({ object, name, value }) => {
-  console.log(object.name, name, value);
-});
-```
-
-For browser gateways or high-frequency telemetry, batch changes and decode only
-the properties needed by the UI:
-
-```js
-const objects = await sen.interest('SELECT demo.Object FROM session.bus', {
-  properties: ['latitude', 'longitude', 'altitude', 'heading'],
-  changeMode: 'batch',
-  coalesce: true
-});
-
-objects.on('changes', ({ changes }) => {
-  websocket.send(JSON.stringify(changes.map(({ object, name, value, timestampNs }) => ({
-    object: object.name,
-    name,
-    value,
-    timestampNs: timestampNs?.toString()
-  }))));
-});
-```
-
-Get an object by name, id, class name, or predicate:
-
-```js
-const object = await objects.waitFor('object-1');
-
-const firstDemoObject = await objects.waitFor(
-  object => object.className === 'demo.Object'
-);
-```
-
-## Publish objects
-
-`sen-ether-client` can also act as a lightweight producer. The producer joins
-the bus, publishes local objects to remote interests, and answers type/state
-requests for those objects.
-
-```js
-import { Sen } from 'sen-ether-client';
-
 const sen = await Sen.connect({
-  session: 'session',
+  session: 'chess',
   tcpHub: '127.0.0.1:65222'
 });
+```
 
-await sen.publishObjects('session.bus', {
-  name: 'demo-counter',
-  className: 'demo.Counter',
-  properties: {
-    label: 'Demo Counter',
-    count: 1,
-    running: true
-  }
+## STL support
+
+`Sen.loadStl()` accepts an STL file or directory and resolves imports before it
+returns. The resulting registry is reusable for every publication. It supports
+classes and inheritance, properties, methods, structs, enums, sequences,
+aliases, optionals, variants, quantities, namespaces, imports, and qualified
+names.
+
+The normal workflow is simply:
+
+```js
+const types = await Sen.loadStl('./stl', {
+  includePaths: ['./shared-stl']
 });
+const sen = await Sen.connect({ types });
 ```
 
-For exact SEN typing, pass a `spec` on each object and any dependent custom
-types through `types`. This is required for structured values such as structs,
-sequences, enums and variants.
-
-If the class spec declares methods, a JavaScript producer can implement them
-with local handlers:
-
-```js
-await sen.publishObjects('session.bus', {
-  name: 'demo-counter',
-  className: 'demo.Counter',
-  spec: counterSpec,
-  properties: { count: 1 },
-  methods: {
-    increment(delta) {
-      const count = this.state.count + delta;
-      this.update({ count });
-      return count;
-    }
-  }
-});
-```
-
-The handler arguments and return value are encoded with the SEN method spec.
-Use `this.update(patch)` inside a handler, or update from outside with:
-
-```js
-await sen.updatePublishedObject('session.bus', 'demo-counter', { count: 2 });
-```
-
-## Objects
-
-Read and write properties:
-
-```js
-const label = await probe.get('label');
-await probe.set('label', 'ready');
-```
-
-Call methods:
-
-```js
-const result = await probe.call('ping', ['hello']);
-```
-
-Subscribe to property changes:
-
-```js
-probe.on('change:label', ({ value, previous, timestampNs }) => {
-  console.log(previous, '->', value, timestampNs);
-});
-```
-
-SEN timestamps are exposed as nanosecond `BigInt` values (`timestampNs`) so the
-64-bit source timestamp is not rounded by JavaScript numbers.
-
-Subscribe to SEN runtime events:
-
-```js
-probe.on('probeEvent', event => {
-  console.log(event.args);
-});
-```
+You can still pass a `spec` or extra `types` directly when an application
+builds TypeSpecs itself. Most applications do not need to do that.
 
 ## CLI
 
-List visible SEN processes:
+List visible Sen processes:
 
 ```bash
-npx sen-ether-scan --tcp-hub 127.0.0.1:65222 --timeout 3000
+npx sen-ether-scan --timeout 3000
 ```
 
-Probe a bus:
+Inspect a bus:
 
 ```bash
-npx sen-ether-probe \
-  --tcp-hub 127.0.0.1:65222 \
-  --bus session.bus
+npx sen-ether-probe --bus chess.board
 ```
 
-## API
+## Compatibility
 
-The public import is:
+`sen-ether-client@0.3.x` supports Sen kernel protocol `9` and ether protocol
+`2`. The versions are checked during the Sen handshake.
 
-```js
-import { Sen, SenInterest, SenRemoteObject } from 'sen-ether-client';
-```
+## API reference
 
-See [API.md](./API.md) for the complete public interface.
+See [API.md](./API.md) for all options and public methods.
