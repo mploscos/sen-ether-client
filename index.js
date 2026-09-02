@@ -53,6 +53,8 @@
  * @property {string} [advertisedHost] Host advertised in TCP discovery beams.
  * @property {number} [beamPeriodMs=1000] Active discovery beam period in ms.
  * @property {object} [target] Already discovered/direct SEN target.
+ * @property {import('./lib/stl.js').StlTypeRegistry|Map<string, object>|Record<string, object>|object[]} [types]
+ * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl().
  */
 
 /**
@@ -71,14 +73,15 @@
  */
 
 /**
- * @typedef {object} SenPublishedObject
+ * @typedef {object} SenPublishedObjectDescriptor
  * @property {string} name SEN object name.
  * @property {string} className SEN class name.
  * @property {number} [id] Optional stable object id. Defaults to CRC32(name).
  * @property {number} [typeHash] Optional class hash. Defaults to CRC32(className).
  * @property {object} [properties] Current object property values.
  * @property {object} [snapshot] Alias for properties.
- * @property {object} [spec] Optional SEN ClassTypeSpec. If omitted, a simple class spec is inferred from properties.
+ * @property {object} [methods] JavaScript handlers for methods declared in the class.
+ * @property {object} [spec] Optional SEN ClassTypeSpec. If omitted, the class is resolved from configured STL types, then inferred from scalar properties.
  * @property {bigint|number|string} [timestamp] Optional SEN timestamp in ns.
  */
 
@@ -106,6 +109,7 @@
 
 export {
   Sen,
+  SenPublishedObject,
   SenInterest,
   SenRemoteObject
 } from './lib/sen.js';

@@ -1,0 +1,69 @@
+package stl_resolver_test;
+
+sequence<u8> ValidSequence; // inline comment for valid sequence
+sequence<u16, 20> ValidBoundedSequence; // inline comment for valid bounded sequence
+array<i16, 50> ValidArray; // inline comment for valid array
+
+// A valid enumeration type featuring different values
+enum ValidEnumerationType : u32
+{
+  value1, // description of value1
+  value2, // description of value2
+  value3, // description of value3
+  value4, // description of value4
+  value5  // description of value5
+}
+
+// A valid struct type that holds fields with all basic types
+struct ValidStructType
+{
+  field1  : u8,         // description of field1
+  field2  : u16,        // description of field2
+  field3  : i16,        // description of field3
+  field4  : u32,        // description of field4
+  field5  : i32,        // description of field5
+  field6  : u64,        // description of field6
+  field7  : i64,        // description of field7
+  field8  : f32,        // description of field8
+  field9  : f64,        // description of field9
+  field10 : bool,       // description of field10
+  field11 : string,     // description of field11
+  field12 : TimeStamp,  // description of field12
+  field13 : Duration    // description of field13
+}
+
+optional<ValidStructType> ValidOptional;
+
+// A valid variant type that holds all custom types previously defined
+variant ValidVariantType
+{
+  ValidSequence,        // description of potential type1
+  ValidBoundedSequence, // description of potential type2
+  ValidArray,           // description of potential type3
+  ValidEnumerationType, // description of potential type4
+  ValidStructType,      // description of potential type5
+  ValidOptional         // description of potential type6
+}
+
+quantity<f64, deg> ValidQuantity [min: -180.0, max: 180.0];
+alias ValidTypeAlias ValidVariantType;
+
+class ValidParentClass
+{
+  var staticNonConfigurablePropertyFromParent : u32 [static_no_config, bestEffort];
+  var staticPropertyFromParent : string [static, confirmed];
+  var writablePropertyFromParent : string [writable, confirmed];
+  fn methodFromParent() [confirmed];
+  event eventFromParent() [bestEffort];
+}
+
+abstract class ValidClass : extends ValidParentClass
+{
+  var staticProperty : string [static];
+  var writableProperty : f32 [writable];
+  var writablePropertyWithTag : ValidQuantity [writable, tag: inspectMe];
+  fn methodWithArgumentsAndReturnValue(lhs: i32, rhs: i32) -> i32;
+  fn constMethod() [const, bestEffort];
+  fn localMethod() [local, confirmed];
+  event eventWithArguments(when: u32, where: string);
+}

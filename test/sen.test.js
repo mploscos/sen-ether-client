@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import net from 'node:net';
 import test from 'node:test';
-import { Sen, SenInterest, SenRemoteObject } from '../index.js';
+import { Sen, SenInterest, SenPublishedObject, SenRemoteObject } from '../index.js';
 import { SenBus } from '../lib/sen.js';
-import { createProcessInfo, validateRemoteHello } from '../lib/client.js';
+import { createProcessInfo, EtherClient, validateRemoteHello } from '../lib/client.js';
 import { SenBinaryWriter } from '../lib/codec.js';
 import { eventHash, methodHash, propertyHash } from '../lib/hash32.js';
 import { encodeArguments, encodeValue } from '../lib/values.js';
@@ -337,10 +337,12 @@ test('Sen includes joined buses when remote announcements are stale', async () =
 test('Sen discovers buses across all discovered targets without interests', async () => {
   const originalConnect = Sen.prototype.connect;
   const originalClose = Sen.prototype.close;
+  const helperOptions = [];
   Sen.prototype.connect = async function connect(options = {}) {
     if (!options.target?.buses) {
       return await originalConnect.call(this, options);
     }
+    helperOptions.push(options);
     this.target = options.target;
     this.client = { processInfo: { sessionName: options.session } };
     this.remoteBuses = new Set(options.target.buses);
@@ -363,6 +365,9 @@ test('Sen discovers buses across all discovered targets without interests', asyn
       { session: 'hmi', bus: 'hud', qualified: 'hmi.hud' },
       { session: 'world1', bus: 'environment', qualified: 'world1.environment' }
     ]);
+    assert.ok(helperOptions.length > 0);
+    assert.ok(helperOptions.every(options => options.listen === false));
+    assert.ok(helperOptions.every(options => options.announceDiscovery === false));
   } finally {
     Sen.prototype.connect = originalConnect;
     Sen.prototype.close = originalClose;
@@ -1328,7 +1333,7 @@ test('Sen JS published objects can handle remote method calls and publish update
     const interest = await consumer.interest(`SELECT * FROM ${session}.devices`, { forceBus: true });
     const [counter] = await waitForObjectNames(interest, ['counter']);
 
-    assert.equal(counter.snapshot.count, 1);
+    assert.equal(Number(counter.snapshot.count), 1);
     assert.equal(await counter.call('increment', [4]), 5);
 
     const deadline = Date.now() + 3000;
@@ -1336,6 +1341,187 @@ test('Sen JS published objects can handle remote method calls and publish update
       await wait(25);
     }
     assert.equal(counter.snapshot.count, 5);
+  } finally {
+    await consumer.close().catch(() => {});
+    await producer.close().catch(() => {});
+  }
+});
+
+test('Sen JS published objects handle writable property setters without a method handler', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-writable-properties-${process.pid}-${Date.now()}`;
+  const discoveryPort = 49000 + (process.pid % 1000);
+  const options = {
+    session,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: discoveryPort,
+    beamPeriodMs: 100
+  };
+  const trackSpec = {
+    name: 'BaseTrack',
+    qualifiedName: 'hmi.tactical.BaseTrack',
+    description: '',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [
+          { id: propertyHash('force'), name: 'force', description: '', category: 'dynamicRW', type: 'u8', transportMode: 'confirmed', tags: [], checkedSet: false }
+        ],
+        methods: [],
+        events: [],
+        constructor: { name: '', description: '', args: [], returnType: '' },
+        isInterface: false
+      }
+    }
+  };
+  const producer = await Sen.connect({ ...options, appName: 'producer' });
+  const consumer = await Sen.connect({ ...options, appName: 'consumer' });
+
+  try {
+    await producer.publishObjects('tracks', [
+      {
+        id: 1,
+        name: 'automatic-setter',
+        className: 'hmi.tactical.BaseTrack',
+        spec: trackSpec,
+        properties: { force: 1 }
+      },
+      {
+        id: 2,
+        name: 'explicit-setter',
+        className: 'hmi.tactical.BaseTrack',
+        spec: trackSpec,
+        properties: { force: 1 },
+        methods: {
+          setNextForce(value) {
+            this.update({ force: value + 1 });
+          }
+        }
+      }
+    ]);
+
+    await consumer.client.connect(producer.client.listenEndpoint);
+    await consumer.waitForRemoteBus('tracks', 3000);
+
+    const interest = await consumer.interest(`SELECT * FROM ${session}.tracks`, { forceBus: true });
+    const [automatic, explicit] = await waitForObjectNames(interest, ['automatic-setter', 'explicit-setter']);
+
+    const automaticCall = once(producer.client, 'runtimeMethodCallLocal');
+    await automatic.set('force', 3);
+    const [automaticEvent] = await automaticCall;
+    assert.equal(automaticEvent.object.state.force, 3);
+
+    const explicitCall = once(producer.client, 'runtimeMethodCallLocal');
+    await explicit.set('force', 4);
+    const [explicitEvent] = await explicitCall;
+    assert.equal(explicitEvent.object.state.force, 5);
+  } finally {
+    await consumer.close().catch(() => {});
+    await producer.close().catch(() => {});
+  }
+});
+
+test('remote method calls wait for STL argument and return type dependencies', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-method-dependencies-${process.pid}-${Date.now()}`;
+  const options = {
+    session,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: 49000 + (process.pid % 1000),
+    beamPeriodMs: 100
+  };
+  const taskPayloadSpec = {
+    name: 'TaskPayload',
+    qualifiedName: 'demo.TaskPayload',
+    description: '',
+    data: {
+      type: 'StructTypeSpec',
+      value: {
+        parent: '',
+        fields: [
+          { name: 'taskId', description: '', type: 'string' },
+          { name: 'status', description: '', type: 'u32' }
+        ]
+      }
+    }
+  };
+  const taskResultSpec = {
+    name: 'TaskResult',
+    qualifiedName: 'demo.TaskResult',
+    description: '',
+    data: {
+      type: 'StructTypeSpec',
+      value: {
+        parent: '',
+        fields: [
+          { name: 'ok', description: '', type: 'bool' },
+          { name: 'taskId', description: '', type: 'string' }
+        ]
+      }
+    }
+  };
+  const taskManagerSpec = {
+    name: 'TaskManager',
+    qualifiedName: 'demo.TaskManager',
+    description: '',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [{ name: 'ready', description: '', category: 'dynamicRO', type: 'bool', transportMode: 'confirmed', tags: [], checkedSet: false }],
+        methods: [{ id: methodHash('update'), name: 'update', description: '', args: [{ name: 'task', description: '', type: 'demo.TaskPayload' }], returnType: 'demo.TaskResult', transportMode: 'confirmed', localOnly: false }],
+        events: [],
+        constructor: { name: '', description: '', args: [], returnType: '' },
+        isInterface: false
+      }
+    }
+  };
+  const producer = await Sen.connect({ ...options, appName: 'producer' });
+  const consumer = await Sen.connect({ ...options, appName: 'consumer' });
+
+  try {
+    await producer.publishObjects('tasks', {
+      id: 1,
+      name: 'TaskManager',
+      className: 'demo.TaskManager',
+      spec: taskManagerSpec,
+      properties: { ready: true },
+      methods: {
+        update(task) {
+          return { ok: Number(task.status) === 2, taskId: task.taskId };
+        }
+      }
+    }, { types: [taskPayloadSpec, taskResultSpec] });
+
+    await consumer.client.connect(producer.client.listenEndpoint);
+    await consumer.waitForRemoteBus('tasks', 3000);
+
+    const interest = await consumer.interest(`SELECT * FROM ${session}.tasks`, { forceBus: true });
+    const [manager] = await waitForObjectNames(interest, ['TaskManager']);
+
+    assert.deepEqual(await manager.call('update', [{ taskId: 'incoming-1', status: 2 }]), {
+      ok: true,
+      taskId: 'incoming-1'
+    });
   } finally {
     await consumer.close().catch(() => {});
     await producer.close().catch(() => {});
@@ -1473,4 +1659,219 @@ test('batched interests flush on close and keep options after local reset', asyn
 
   assert.equal(batches.length, 2);
   assert.deepEqual(batches[1].changes.map(change => change.name), ['latitude']);
+});
+
+test('published object handles update snapshots and remove their object', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-handle-${process.pid}-${Date.now()}`;
+  const options = {
+    session,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: 50000 + (process.pid % 1000),
+    beamPeriodMs: 100
+  };
+  const producer = await Sen.connect({ ...options, appName: 'handle-producer' });
+  const consumer = await Sen.connect({ ...options, appName: 'handle-consumer' });
+
+  try {
+    const handle = await producer.publish('devices', {
+      name: 'counter',
+      className: 'demo.Counter',
+      properties: { count: 1 }
+    });
+    assert.ok(handle instanceof SenPublishedObject);
+    assert.equal(handle.snapshot.count, 1);
+
+    await consumer.client.connect(producer.client.listenEndpoint);
+    await consumer.waitForRemoteBus('devices', 3000);
+    const interest = await consumer.interest(`SELECT * FROM ${session}.devices`, { forceBus: true });
+    const [counter] = await waitForObjectNames(interest, ['counter']);
+    assert.equal(Number(counter.snapshot.count), 1);
+
+    await handle.update({ count: 2 });
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && Number(counter.snapshot.count) !== 2) {
+      await wait(25);
+    }
+    assert.equal(handle.snapshot.count, 2);
+    assert.equal(Number(counter.snapshot.count), 2);
+
+    await handle.remove();
+    while (Date.now() < deadline && interest.objects().length) {
+      await wait(25);
+    }
+    assert.equal(interest.objects().length, 0);
+  } finally {
+    await consumer.close().catch(() => {});
+    await producer.close().catch(() => {});
+  }
+});
+
+test('root producer publishes qualified buses in multiple local sessions', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const options = {
+    announceDiscovery: true,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: 51000 + (process.pid % 1000),
+    beamPeriodMs: 100,
+    discoverySettleMs: 0,
+    targetDiscoverySettleMs: 0
+  };
+  const sen = await Sen.connect(options);
+
+  try {
+    const aircraft = await sen.publish('hmi.hud', {
+      name: 'AircraftInfo',
+      className: 'demo.AircraftInfo',
+      properties: { altitude: 1000 }
+    });
+    const track = await sen.publish('facpl.hmi', {
+      name: 'BANDIT_1',
+      className: 'demo.Track',
+      properties: { latitude: 39.16 }
+    });
+
+    assert.deepEqual(sen.listSessions(), ['facpl', 'hmi']);
+    assert.deepEqual(sen.listBuses({ qualified: true }), ['facpl.hmi', 'hmi.hud']);
+    assert.equal(aircraft.snapshot.altitude, 1000);
+    assert.equal(track.snapshot.latitude, 39.16);
+
+    await aircraft.update({ altitude: 1100 });
+    await track.update({ latitude: 39.17 });
+    assert.equal(aircraft.snapshot.altitude, 1100);
+    assert.equal(track.snapshot.latitude, 39.17);
+  } finally {
+    await sen.close().catch(() => {});
+  }
+});
+
+test('a local producer stays available when its last consumer disconnects', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-local-producer-${process.pid}-${Date.now()}`;
+  const options = {
+    session,
+    localSession: true,
+    announceDiscovery: true,
+    reconnect: true,
+    reconnectDelayMs: 10,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: 53000 + (process.pid % 1000)
+  };
+  let producer;
+  let consumer;
+
+  try {
+    producer = await Sen.connect({ ...options, appName: 'local-producer' });
+    consumer = new EtherClient({
+      sessionName: session,
+      appName: 'temporary-consumer',
+      busMulticast: false,
+      multicastDiscovery: false
+    });
+    await producer.publish('devices', {
+      name: 'counter',
+      className: 'demo.Counter',
+      properties: { count: 1 }
+    });
+    const initialClient = producer.client;
+    let reconnects = 0;
+    producer.on('reconnecting', () => { reconnects += 1; });
+
+    await consumer.start({ listenHost: '127.0.0.1', listenPort: 0 });
+    const ready = once(consumer, 'ready');
+    await consumer.connect(initialClient.listenEndpoint);
+    await ready;
+    await consumer.close();
+    await wait(100);
+
+    assert.equal(producer.client, initialClient);
+    assert.equal(reconnects, 0);
+    assert.deepEqual(producer.listBuses(), ['devices']);
+  } finally {
+    await consumer?.close().catch(() => {});
+    await producer?.close().catch(() => {});
+  }
+});
+
+test('published objects are restored once after local session reconnect', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-republish-${process.pid}-${Date.now()}`;
+  const options = {
+    session,
+    reconnect: true,
+    reconnectDelayMs: 1,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    port: 52000 + (process.pid % 1000),
+    beamPeriodMs: 100
+  };
+  const producer = await Sen.connect({ ...options, appName: 'reconnect-producer' });
+
+  try {
+    const handle = await producer.publish('devices', {
+      name: 'counter',
+      className: 'demo.Counter',
+      properties: { count: 1 }
+    });
+    const previousClient = producer.client;
+    const reconnected = once(producer, 'reconnect');
+    previousClient.emit('close', true);
+    await reconnected;
+    assert.notEqual(producer.client, previousClient);
+
+    const consumer = await Sen.connect({ ...options, reconnect: false, appName: 'reconnect-consumer' });
+    try {
+      await consumer.client.connect(producer.client.listenEndpoint);
+      await consumer.waitForRemoteBus('devices', 3000);
+      const interest = await consumer.interest(`SELECT * FROM ${session}.devices`, { forceBus: true });
+      const [counter] = await waitForObjectNames(interest, ['counter']);
+      assert.equal(interest.objects().length, 1);
+      assert.equal(Number(counter.snapshot.count), 1);
+
+      await handle.update({ count: 3 });
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline && Number(counter.snapshot.count) !== 3) {
+        await wait(25);
+      }
+      assert.equal(Number(counter.snapshot.count), 3);
+      assert.equal(handle.snapshot.count, 3);
+    } finally {
+      await consumer.close().catch(() => {});
+    }
+  } finally {
+    await producer.close().catch(() => {});
+  }
 });
