@@ -1,6 +1,6 @@
 # sen-ether-client
 
-`Connect Node.js applications to heterogeneous [Sen](https://github.com/airbus/sen) instances through the ether component`. Read live data, subscribe to changes, call methods, write properties declared as writable, and publish JavaScript objects using Sen types. sen-ether-client is pure JavaScript, with no native bindings or local Sen installation required
+Connect Node.js applications to heterogeneous [Sen](https://github.com/airbus/sen) instances through the ether component. Read live data, subscribe to changes, call methods, write properties declared as writable, and publish JavaScript objects using Sen types. sen-ether-client is pure JavaScript, with no native bindings or local Sen installation required
 
 ## Install
 
