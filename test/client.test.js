@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { compileInterestQuery } from '../lib/interest-query.js';
 import { once } from 'node:events';
 import net from 'node:net';
 import test from 'node:test';
@@ -342,4 +343,90 @@ test('EtherClient discovers JS peers through multicast discovery', async t => {
     await publisher.close();
     await consumer.close();
   }
+});
+
+test('published query predicates preserve classes, literals and expression precedence', () => {
+  const base = { qualifiedName: 'demo.Base', data: { value: { parents: [] } } };
+  const spec = { qualifiedName: 'demo.Track', data: { value: { parents: ['demo.Base'] } } };
+  const types = new Map([[base.qualifiedName, base], [spec.qualifiedName, spec]]);
+  const object = { spec, name: 'A  B', id: 42, state: { id: 'A  B', altitude: 12.5, position: { x: -2 } } };
+  for (const query of [
+    'SELECT demo.Track FROM js-test.tree WHERE name == "A  B"',
+    "SELECT demo.Base FROM js.tree WHERE name = 'A  B' AND altitude > 12",
+    'SELECT * FROM js.tree WHERE (altitude + 2.5) / 3 = 5 AND position.x IN (-2, 3)',
+    'SELECT * FROM js.tree WHERE NOT altitude < 10',
+    'SELECT * FROM js.tree WHERE id = 42'
+  ]) assert.equal(compileInterestQuery(query)(object, types), true, query);
+  for (const query of [
+    'SELECT demo.Other FROM js.tree',
+    'SELECT demo.Track FROM js.tree WHERE id = "other"',
+    'SELECT * FROM js.tree WHERE missing != 1',
+    'SELECT * FROM js.tree WHERE altitude < 5 OR position.x > 0'
+  ]) assert.equal(compileInterestQuery(query)(object, types), false, query);
+  for (const where of ['id =', 'id === "x"', 'process.exit()', 'id LIKE "x"', 'id = "x"; garbage']) {
+    assert.throws(() => compileInterestQuery(`SELECT * FROM js.tree WHERE ${where}`), SyntaxError);
+  }
+});
+
+test('JavaScript publisher filters each interest and updates membership when WHERE changes', async t => {
+  if (!await canListenTcp()) { t.skip('TCP listen is not permitted'); return; }
+  const publisher = new EtherClient({ sessionName: 'js', appName: 'publisher', busMulticast: false, multicastDiscovery: false });
+  const consumer = new EtherClient({ sessionName: 'js', appName: 'consumer', busMulticast: false, multicastDiscovery: false });
+  const memberships = new Map();
+  const seen = [];
+  consumer.on('objectsPublished', event => {
+    for (const discovery of event.discoveries) {
+      const ids = memberships.get(discovery.interestId) ?? new Set();
+      for (const object of discovery.objects) { ids.add(object.name); seen.push([discovery.interestId, object.name]); }
+      memberships.set(discovery.interestId, ids);
+    }
+  });
+  const removed = [];
+  consumer.on('objectsRemoved', event => removed.push(...event.removals));
+  async function until(predicate) {
+    const end = Date.now() + 3000;
+    while (!predicate()) {
+      if (Date.now() > end) throw new Error('Timed out waiting for interest membership');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+  try {
+    await publisher.start({listenHost:'127.0.0.1', listenPort:0});
+    await consumer.start({listenHost:'127.0.0.1', listenPort:0});
+    await publisher.joinBus('tree'); await consumer.joinBus('tree');
+    await publisher.connect(consumer.listenEndpoint); await waitFor(publisher, 'ready');
+    publisher.publishObjects('tree', [
+      {name:'AircraftInfo', className:'demo.AircraftInfo', properties:{id:'AircraftInfo', altitude:20}},
+      {name:'InstrumentData', className:'demo.InstrumentData', properties:{id:'InstrumentData', altitude:10}}
+    ]);
+    const queries = [
+      'SELECT * FROM js.tree',
+      'SELECT demo.InstrumentData FROM js.tree',
+      'SELECT demo.InstrumentData FROM js.tree WHERE name == "InstrumentData" AND altitude > 15',
+      'SELECT * FROM js.tree WHERE name = "AircraftInfo"'
+    ];
+    for (let i = 0; i < queries.length; i++) consumer.startInterest('tree', queries[i], {id:101+i});
+    await until(() => memberships.has(104));
+    assert.deepEqual([...memberships.get(101)].sort(), ['AircraftInfo','InstrumentData']);
+    assert.deepEqual([...memberships.get(102)], ['InstrumentData']);
+    assert.equal(memberships.has(103), false);
+    assert.deepEqual([...memberships.get(104)], ['AircraftInfo']);
+    publisher.updatePublishedObject('tree', 'InstrumentData', {altitude:20});
+    await until(() => memberships.has(103));
+    assert.deepEqual([...memberships.get(103)], ['InstrumentData']);
+    publisher.updatePublishedObject('tree', 'InstrumentData', {altitude:5});
+    await until(() => removed.some(item => item.interestId === 103));
+    assert.equal(removed.length, 1);
+    publisher.updatePublishedObject('tree', 'InstrumentData', {altitude:30});
+    await until(() => seen.filter(([id]) => id === 103).length === 2);
+    assert.equal(seen.some(([id, name]) => id === 102 && name !== 'InstrumentData'), false);
+    publisher.publishObjects('tree', {name:'Late', className:'demo.InstrumentData', properties:{id:'Late', altitude:30}});
+    await until(() => memberships.get(102)?.has('Late'));
+    assert.equal(memberships.get(103).has('Late'), false);
+    const beforeRemoval = removed.length;
+    publisher.removePublishedObjects('tree', ['Late']);
+    await until(() => removed.length >= beforeRemoval + 2);
+    assert.deepEqual(removed.slice(beforeRemoval).map(item => item.interestId).sort(), [101, 102]);
+    consumer.stopInterest('tree', 103);
+  } finally { await publisher.close(); await consumer.close(); }
 });

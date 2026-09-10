@@ -213,6 +213,18 @@ presence beams announce sessions/processes but not the bus list.
 
 ### Publish local objects
 
+JavaScript publishers filter each remote interest by its selected class (including
+registered base classes) and `WHERE` expression. Conditions read published
+properties, including nested fields. As in native SEN, `name` is the object
+name and `id` is its numeric protocol identifier. Updating properties adds or removes objects
+from matching interests automatically.
+
+Supported conditions use quoted strings, numbers, booleans, comparisons
+(`=`, `==`, `!=`, `<>`, `<`, `<=`, `>`, `>=`), arithmetic, parentheses,
+`AND`, `OR`, `NOT` and `IN`. Unsupported expressions emit a `warning` on the
+publisher and do not create a subscription. Queries sent to native SEN
+publishers retain the native query language.
+
 For one long-lived application object, prefer `publish()`. It returns a
 `SenPublishedObject` with `update(patch)` and `remove()`:
 
