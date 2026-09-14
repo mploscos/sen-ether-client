@@ -8,7 +8,7 @@ import { Sen, SenInterest, SenPublishedObject, SenRemoteObject } from 'sen-ether
 
 ## Compatibility
 
-`sen-ether-client@0.1.x`, `sen-ether-client@0.2.x`, and `sen-ether-client@0.3.x` support:
+`sen-ether-client@0.1.x` through `sen-ether-client@0.4.x` support:
 
 - kernel protocol `9`
 - ether protocol `2`
@@ -48,12 +48,14 @@ Connection options:
 - `announceDiscovery`: emit presence beams for this process. `Sen` defaults to
   `false`. Set it to `true` for a process that publishes objects and must be
   discovered by peers.
+- `localSession`: host the named session without first discovering an existing
+  process. Defaults to `false`; it is selected automatically for an active
+  session when no target is found.
 - `multicastDiscovery`: enable active multicast presence beaming when no
   `tcpHub` is configured. Defaults to `true`.
 - `group`: multicast discovery group. Defaults to `239.255.0.44`.
 - `bindAddress`: optional multicast discovery bind address.
-- `listen`: enable the local Ether TCP listener. Defaults to `true` for active
-  hub sessions.
+- `listen`: enable the local Ether TCP listener. Defaults to `true`.
 - `listenHost`: host/interface for the local Ether listener. Defaults to
   `0.0.0.0`.
 - `listenPort`: local Ether listener port. Defaults to `0` so the OS picks one.
@@ -75,12 +77,21 @@ Connection options:
 - `participantReadyTimeoutMs`: short non-fatal grace timeout for bus
   participant acknowledgements. Defaults to `1000`.
 - `socketKeepAlive`: enable TCP keepalive. Defaults to `true`.
+- `socketKeepAliveInitialDelayMs`: TCP keepalive initial delay. Defaults to
+  `1000`.
 - `socketIdleTimeoutMs`: optional TCP idle timeout. Defaults to `0` because
   valid SEN connections can be quiet on TCP while bus data flows separately.
 - `presenceTimeoutMs`: close and reconnect when the connected SEN process stops
   announcing ether presence beams. Defaults to `5000`; set `0` to disable.
 - `presenceCheckIntervalMs`: presence watchdog check interval. Defaults to
   `1000`.
+- `rediscoverTargetOnReconnect`: discover a fresh target instead of reusing a
+  direct target. Defaults to `false`.
+- `busMulticast`: use native SEN bus multicast when available. Defaults to
+  `true`; disabling it uses direct process TCP for runtime events.
+- `busMulticastPort`: native bus multicast port. Defaults to `50985`.
+- `types`: an STL registry from `Sen.loadStl()` or compatible TypeSpec
+  collection used for decoding and publishing.
 
 `Sen.connect()` uses multicast discovery. `sen-ether-client` reads this SEN environment
 variable as its multicast default:
@@ -162,6 +173,7 @@ Main methods:
 - `await sen.publishObject(busName, object, options)`
 - `await sen.publishObjects(busName, objects, options)`
 - `await sen.updatePublishedObject(busName, object, patch, options)`
+- `await sen.emitPublishedEvent(busName, object, eventName, args, options)`
 - `await sen.removePublishedObjects(busName, objects, options)`
 - `await sen.session(name)`
 - `await sen.discoverBuses(options)`
@@ -226,7 +238,7 @@ publisher and do not create a subscription. Queries sent to native SEN
 publishers retain the native query language.
 
 For one long-lived application object, prefer `publish()`. It returns a
-`SenPublishedObject` with `update(patch)` and `remove()`:
+`SenPublishedObject` with `update(patch)`, `emit(name, args)` and `remove()`:
 
 ```js
 const types = await Sen.loadStl('./stl');
@@ -243,8 +255,31 @@ const counter = await sen.publish('devices', {
 });
 
 await counter.update({ count: 2 });
+await counter.emit('limitReached', [2]);
 await counter.remove();
 ```
+
+`emit()` resolves the event (including inherited events) from the published
+class, validates and encodes its arguments, uses its native member ID and
+transport mode, and attaches the published object ID and a SEN nanosecond
+creation timestamp. The handle remains valid after automatic reconnect.
+Confirmed events use the direct process connection, multicast events use the
+native bus group, and `bestEffort`/unicast events use the peer's advertised UDP
+endpoint. UDP modes fall back to the direct connection when UDP is unavailable.
+
+The selector-based form is available when a handle is not convenient:
+
+```js
+await sen.emitPublishedEvent(
+  'session.devices',
+  'demo-counter',
+  'limitReached',
+  [2]
+);
+```
+
+Unknown objects, undeclared events, missing types and invalid argument values
+reject with an error before a malformed runtime event is sent.
 
 `publishObjects()` is useful when publishing several objects at once.
 `publishObject()` returns the lower-level publication record. Both remain
@@ -270,18 +305,22 @@ await sen.publishObjects('session.bus', [{
 
 Published objects can expose JavaScript handlers for methods declared in their
 SEN class spec. The handler receives decoded SEN arguments as positional
-JavaScript arguments and can publish property updates through `this.update()`.
+JavaScript arguments. Keep the publication handle in the surrounding scope when
+the handler needs to update the object.
 
 ```js
-await sen.publishObjects('session.bus', {
+const types = await Sen.loadStl('./stl');
+const sen = await Sen.connect({ session: 'session', types });
+
+let counter;
+counter = await sen.publish('session.bus', {
   name: 'demo-counter',
   className: 'demo.Counter',
-  spec: counterSpec,
   properties: { count: 1 },
   methods: {
-    increment(delta) {
-      const count = this.state.count + delta;
-      this.update({ count });
+    async increment(delta) {
+      const count = counter.snapshot.count + delta;
+      await counter.update({ count });
       return count;
     }
   }
@@ -371,7 +410,7 @@ objects.on('changes', ({ changes, dropped }) => {
 
 ## SenRemoteObject
 
-Returned by `interest.waitFor(...)`, `interest.getObject(...)`, or
+Returned by `interest.waitFor(...)`, `interest.get(...)`, or
 `sen.getObject(...)`.
 
 ```js
@@ -402,10 +441,12 @@ Main events:
 
 - `change`
 - `change:<property>`
-- SEN runtime event names emitted by the remote object.
+- `event` for every SEN runtime event
+- the declared SEN runtime event name, with `{ object, id, name, args,
+  creationTimeNs, raw }`
 - `stale`
 
-`change.timestampNs` is also a nanosecond `BigInt`. This keeps SEN's original
+`change.timestampNs` is a nanosecond `BigInt`. This keeps SEN's original
 64-bit timestamp precision. Convert it explicitly at JSON boundaries:
 
 ```js
@@ -418,5 +459,27 @@ objects.on('change', ({ object, name, value, timestampNs }) => {
   }));
 });
 ```
+
+## SenPublishedObject
+
+Returned by `await sen.publish(...)`. It is a persistent high-level handle;
+publication details are restored automatically after a reconnect.
+
+Main properties:
+
+- `id`
+- `name`
+- `className`
+- `snapshot` / `properties`
+- `methods`
+
+Main methods:
+
+- `await object.update(patch)`
+- `await object.emit(eventName, args, options)`
+- `await object.remove()`
+
+`options.creationTime` may override the emitted event timestamp in nanoseconds;
+normal application code should let the client generate it.
 
 Low-level protocol modules are intentionally not public API.

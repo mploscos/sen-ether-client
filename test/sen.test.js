@@ -1347,6 +1347,89 @@ test('Sen JS published objects can handle remote method calls and publish update
   }
 });
 
+test('published objects emit typed and inherited events to consumers', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-events-${process.pid}-${Date.now()}`;
+  const options = {
+    session, reconnect: false, timeout: 3000, busMulticast: true,
+    listenHost: '127.0.0.1', advertisedHost: '127.0.0.1', interfaceAddress: '127.0.0.1',
+    port: 49500 + (process.pid % 500), busMulticastPort: 54000 + (process.pid % 1000), beamPeriodMs: 100
+  };
+  const types = (await Sen.loadStl(new URL('./fixtures/events.stl', import.meta.url).pathname)).toTypeSpecs();
+  types.delete('demo.Unknown');
+  const producer = await Sen.connect({ ...options, appName: 'event-producer', types });
+  const consumer = await Sen.connect({ ...options, appName: 'event-consumer' });
+
+  try {
+    const published = await producer.publish('sensors', {
+      id: 7, name: 'temperature-1', className: 'demo.TemperatureSensor',
+      properties: { temperature: 21.5 }
+    });
+
+    await consumer.client.connect(producer.client.listenEndpoint);
+    await consumer.waitForRemoteBus('sensors', 3000);
+    const interest = await consumer.interest(`SELECT * FROM ${session}.sensors`, { forceBus: true });
+    const [sensor] = await waitForObjectNames(interest, ['temperature-1']);
+
+    const genericEvent = once(sensor, 'event');
+    const namedEvent = once(sensor, 'thresholdExceeded');
+    const interestEvent = once(interest, 'event');
+    const busEvent = once(sensor.bus, 'event');
+    const senEvent = once(consumer, 'event');
+    const emitted = await published.emit('thresholdExceeded', [27.3], { creationTime: 123n });
+    const [[generic], [named], [atInterest], [atBus], [atSen]] = await Promise.all([
+      genericEvent, namedEvent, interestEvent, busEvent, senEvent
+    ]);
+    assert.equal(emitted.event.id, eventHash('thresholdExceeded'));
+    assert.equal(emitted.object.id, 7);
+    assert.deepEqual(generic.args, [27.3]);
+    assert.equal(generic.creationTimeNs, 123n);
+    assert.equal(named, generic);
+    assert.equal(atInterest, generic);
+    assert.equal(atBus, generic);
+    assert.equal(atSen, generic);
+
+    const inheritedDeadline = Date.now() + 3000;
+    while (!sensor.event('activated') && Date.now() < inheritedDeadline) await wait(25);
+    assert.equal(sensor.event('activated')?.name, 'activated');
+    const activated = once(sensor, 'activated');
+    await published.emit('activated');
+    assert.deepEqual((await activated)[0].args, []);
+
+    const moved = once(sensor, 'moved');
+    await producer.emitPublishedEvent('sensors', published, 'moved', ['b1', 'c3']);
+    assert.deepEqual((await moved)[0].args, ['b1', 'c3']);
+
+    const sampled = once(sensor, 'sampled');
+    await published.emit('sampled', [{ value: 28.5, unit: 'C' }]);
+    assert.deepEqual((await sampled)[0].args, [{ value: 28.5, unit: 'C' }]);
+
+    const broadcast = once(sensor, 'broadcast');
+    const multicastResult = await published.emit('broadcast', [42]);
+    assert.equal(multicastResult.transportMode, 'multicast');
+    assert.deepEqual((await broadcast)[0].args, [42]);
+
+    const direct = once(sensor, 'direct');
+    const unicastResult = await published.emit('direct', [7]);
+    assert.equal(unicastResult.transportMode, 'unicast');
+    assert.deepEqual((await direct)[0].args, [7]);
+
+    await assert.rejects(published.emit('missing'), /SEN event not found: demo\.TemperatureSensor\.missing/);
+    await assert.rejects(published.emit('moved', ['b1']), /expects 2 argument\(s\), got 1/);
+    await assert.rejects(published.emit('sampled', ['invalid']), /expects an object value/);
+    await assert.rejects(published.emit('unknownPayload', [{}]), /unknown SEN value type: demo\.Unknown/);
+    await published.remove();
+    await assert.rejects(published.emit('activated'), /SEN published object not found/);
+  } finally {
+    await consumer.close().catch(() => {});
+    await producer.close().catch(() => {});
+  }
+});
+
 test('Sen JS published objects handle writable property setters without a method handler', async t => {
   if (!await canListenTcp()) {
     t.skip('TCP listen is not permitted in this test environment');
@@ -1844,7 +1927,17 @@ test('published objects are restored once after local session reconnect', async 
     const handle = await producer.publish('devices', {
       name: 'counter',
       className: 'demo.Counter',
-      properties: { count: 1 }
+      properties: { count: 1 },
+      spec: {
+        name: 'Counter', qualifiedName: 'demo.Counter', description: '',
+        data: { type: 'ClassTypeSpec', value: {
+          parents: [],
+          properties: [{ id: propertyHash('count'), name: 'count', description: '', category: 'dynamicRO', type: 'i64', transportMode: 'confirmed', tags: [], checkedSet: false }],
+          methods: [],
+          events: [{ id: eventHash('reset'), name: 'reset', description: '', args: [{ name: 'reason', type: 'string' }], transportMode: 'confirmed' }],
+          constructor: { name: '', description: '', args: [], returnType: '' }, isInterface: false
+        } }
+      }
     });
     const previousClient = producer.client;
     const reconnected = once(producer, 'reconnect');
@@ -1868,6 +1961,10 @@ test('published objects are restored once after local session reconnect', async 
       }
       assert.equal(Number(counter.snapshot.count), 3);
       assert.equal(handle.snapshot.count, 3);
+
+      const reset = once(counter, 'reset');
+      await handle.emit('reset', ['reconnected']);
+      assert.deepEqual((await reset)[0].args, ['reconnected']);
     } finally {
       await consumer.close().catch(() => {});
     }

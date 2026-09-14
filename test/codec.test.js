@@ -8,6 +8,7 @@ import {
   encodeBusControlMessage,
   encodeConfirmedBusFrame,
   encodeKernelControlMessage,
+  encodeRuntimeEvents,
   encodeRuntimeMethodCall
 } from '../lib/bus.js';
 import {
@@ -334,6 +335,22 @@ test('Runtime events decode producer, event id and argument buffer', () => {
   assert.equal(decoded.events[0].producerId, 100);
   assert.equal(decoded.events[0].eventId, 200);
   assert.deepEqual(decodeArguments(decoded.events[0].argumentsBuffer, [{ name: 'count', type: 'u32' }]), [3]);
+});
+
+test('Runtime events encode the native producer, event, timestamp and arguments layout', () => {
+  const specs = [{ name: 'message', type: 'string' }, { name: 'count', type: 'u32' }];
+  const decoded = decodeBusMessage(encodeRuntimeEvents([{
+    producerId: 10,
+    eventId: 20,
+    creationTime: 30n,
+    argumentsBuffer: encodeArguments(['hello', 3], specs)
+  }]));
+
+  assert.equal(decoded.categoryName, 'runtimeEvents');
+  assert.equal(decoded.events[0].producerId, 10);
+  assert.equal(decoded.events[0].eventId, 20);
+  assert.equal(decoded.events[0].creationTime, 30n);
+  assert.deepEqual(decodeArguments(decoded.events[0].argumentsBuffer, specs), ['hello', 3]);
 });
 
 test('SEN Buffer values round-trip as Node buffers', () => {

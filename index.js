@@ -27,20 +27,25 @@
 
 /**
  * @typedef {object} SenConnectOptions
+ * @property {string} [appName='sen-ether-client'] Local Ether process name.
  * @property {string} [tcpHub] Optional SEN TCP discovery hub as `host:port`. If omitted, multicast discovery is used.
  * @property {string} [session] Optional SEN session name. Omit it to let
  * `interest(query)` connect to the session named in the query.
  * @property {boolean} [multicastDiscovery=true] Enable active multicast presence beaming when no TCP hub is configured.
+ * @property {boolean} [announceDiscovery=false] Advertise this process to peers. Enable for discoverable publishers.
+ * @property {boolean} [localSession=false] Host the named session without discovering an existing process first.
  * @property {string} [group='239.255.0.44'] Multicast discovery group.
  * @property {string} [bindAddress] Optional multicast discovery bind address.
  * @property {string} [app] Remote process appName substring filter.
  * @property {number} [timeout=3000] Discovery and operation timeout in ms.
  * @property {number} [discoverySettleMs=100] Discovery settle time after the first process is found.
- * @property {number} [busDiscoverySettleMs=300] Max wait after lightweight session connect before reading bus announcements.
+ * @property {number} [targetDiscoverySettleMs=1000] Target collection window for root multi-session discovery.
+ * @property {number} [busDiscoverySettleMs] Max wait after lightweight session connect before reading bus announcements. Defaults to at least 1000 ms.
  * @property {number} [participantReadyTimeoutMs=1000] Short grace timeout for non-fatal bus participant acknowledgements.
  * @property {boolean} [reconnect=true] Reconnect and restart interests after disconnection.
  * @property {number} [reconnectDelayMs=500] Delay between reconnect attempts.
  * @property {number} [maxReconnectAttempts=0] Maximum reconnect attempts. `0` means unlimited.
+ * @property {boolean} [rediscoverTargetOnReconnect=false] Discover a fresh target instead of reusing a direct target on reconnect.
  * @property {boolean} [socketKeepAlive=true] Enable TCP keepalive on SEN ether connections.
  * @property {number} [socketKeepAliveInitialDelayMs=1000] TCP keepalive initial delay.
  * @property {number} [socketIdleTimeoutMs=0] Optional transport idle timeout in ms. `0` disables it.
@@ -52,6 +57,10 @@
  * @property {number} [listenPort=0] Local Ether listener port. `0` lets the OS choose.
  * @property {string} [advertisedHost] Host advertised in TCP discovery beams.
  * @property {number} [beamPeriodMs=1000] Active discovery beam period in ms.
+ * @property {number} [port] Ether multicast discovery port. Defaults to `SEN_ETHER_DISCOVERY_PORT`, then 60543.
+ * @property {boolean} [busMulticast=true] Join native bus multicast groups. When disabled, event delivery falls back to TCP.
+ * @property {number} [busMulticastPort=50985] Native bus multicast UDP port.
+ * @property {Array<{min:number,max:number}>} [busMulticastRange] Four-octet range used to derive native bus multicast groups.
  * @property {object} [target] Already discovered/direct SEN target.
  * @property {import('./lib/stl.js').StlTypeRegistry|Map<string, object>|Record<string, object>|object[]} [types]
  * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl().
@@ -60,6 +69,7 @@
 /**
  * @typedef {object} SenInterestOptions
  * @property {string} [bus] Explicit bus name when it cannot be inferred from the query.
+ * @property {string} [query] Explicit interest query when using `sen.subscribe(busName)`.
  * @property {boolean} [forceBus=false] Join without waiting for the remote process to announce the bus.
  * @property {number} [timeout] Operation timeout in ms.
  * @property {number} [id] Optional native interest id. Defaults to CRC32(query).
@@ -87,7 +97,7 @@
 
 /**
  * @typedef {object} SenPublishOptions
- * @property {Map<string, object>|Record<string, object>|object[]} [types] Extra SEN type specs required by object properties.
+ * @property {import('./lib/stl.js').StlTypeRegistry|Map<string, object>|Record<string, object>|object[]} [types] Extra SEN type specs required by the object.
  * @property {number} [participantId] Optional local participant id for a newly joined bus.
  */
 
@@ -105,6 +115,17 @@
 
 /**
  * @typedef {string | number | ((object: SenRemoteObject) => boolean)} SenObjectSelector
+ */
+
+/**
+ * @typedef {object} SenRuntimeEvent
+ * @property {SenRemoteObject} object Remote object that produced the event.
+ * @property {number} id SEN event member ID.
+ * @property {string|undefined} name Resolved event name.
+ * @property {unknown[]|undefined} args Decoded arguments when the EventSpec is known.
+ * @property {bigint|number} creationTime Raw SEN creation timestamp.
+ * @property {bigint|undefined} creationTimeNs Nanosecond timestamp normalized as a BigInt.
+ * @property {Buffer} raw Encoded SEN argument buffer.
  */
 
 export {

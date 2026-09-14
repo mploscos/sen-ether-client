@@ -1,0 +1,8 @@
+package demo;
+
+class Counter
+{
+  var count : i32 [writable, confirmed];
+  fn increment(delta: i32) -> i32 [confirmed];
+  event limitReached(value: i32) [confirmed];
+}

@@ -1,7 +1,7 @@
 {
   "name": "sen-ether-client",
-  "version": "0.3.1",
-  "description": "Pure JavaScript SEN client for existing kernels over ether",
+  "version": "0.4.0",
+  "description": "Pure JavaScript SEN Ether client for consuming and publishing SEN objects from Node.js",
   "senCompatibility": {
     "kernelProtocolVersion": 9,
     "etherProtocolVersion": 2
@@ -16,12 +16,31 @@
     "API.md",
     "README.md",
     "index.js",
+    "examples",
     "lib",
     "bin",
     "resources",
     "scripts"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mploscos/sen-ether-client.git"
+  },
+  "homepage": "https://github.com/mploscos/sen-ether-client#readme",
+  "bugs": {
+    "url": "https://github.com/mploscos/sen-ether-client/issues"
+  },
+  "keywords": [
+    "sen",
+    "ether",
+    "stl",
+    "telemetry",
+    "distributed-objects"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "exports": "./index.js",
   "scripts": {
     "generate:protocol": "node ./scripts/generate-protocol.mjs",

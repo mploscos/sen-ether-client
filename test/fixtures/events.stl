@@ -1,0 +1,28 @@
+package demo;
+
+struct Reading
+{
+  value : f64,
+  unit : string
+}
+
+struct Unknown
+{
+  placeholder : u8
+}
+
+class Sensor
+{
+  event activated() [confirmed];
+}
+
+class TemperatureSensor : extends Sensor
+{
+  var temperature : f64 [confirmed];
+  event thresholdExceeded(value: f64) [confirmed];
+  event moved(from: string, to: string) [confirmed];
+  event sampled(reading: Reading) [confirmed];
+  event direct(value: u32) [bestEffort];
+  event broadcast(value: u32);
+  event unknownPayload(value: Unknown) [confirmed];
+}

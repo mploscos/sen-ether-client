@@ -1,6 +1,15 @@
 # sen-ether-client
 
-Connect Node.js applications to heterogeneous [Sen](https://github.com/airbus/sen) instances through the ether component. Read live data, subscribe to changes, call methods, write properties declared as writable, and publish JavaScript objects using Sen types. sen-ether-client is pure JavaScript, with no native bindings or local Sen installation required
+Use SEN from Node.js without native bindings.
+
+Discover sessions and buses, consume live SEN objects, subscribe to changes and
+events, call methods, write writable properties, and publish JavaScript objects
+through the SEN Ether component.
+
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js)](https://nodejs.org/)
+[![license](https://img.shields.io/npm/l/sen-ether-client)](./LICENSE)
+
+**Pure JavaScript · No native bindings · No local SEN installation · Multi-session · STL support · Automatic reconnect**
 
 ## Install
 
@@ -8,34 +17,47 @@ Connect Node.js applications to heterogeneous [Sen](https://github.com/airbus/se
 npm install sen-ether-client
 ```
 
-## Read Sen objects
+## Capabilities
 
-Connect, create an interest, and wait for the object you need:
+| Capability | Consumer | Publisher |
+| --- | :---: | :---: |
+| Objects | ✅ | ✅ |
+| Property updates | ✅ | ✅ |
+| Writable properties | ✅ | ✅ |
+| Methods | call | expose |
+| Events | listen | emit |
+| STL types | ✅ | ✅ |
+| Reconnect | ✅ | ✅ |
+
+SEN kernel protocol **9** and Ether protocol **2** are supported and checked
+during the handshake.
+
+## Consume SEN objects
 
 ```js
 import { Sen } from 'sen-ether-client';
 
 const sen = await Sen.connect();
-const board = await sen.interest('SELECT * FROM chess.board');
-const knight = await board.waitFor('white-knight-b1');
 
-console.log(knight.snapshot.square);
+try {
+  const board = await sen.interest('SELECT * FROM chess.board');
+  const knight = await board.waitFor('white-knight-b1');
 
-knight.on('change:square', ({ value }) => {
-  console.log('square:', value);
-});
-
-await sen.close();
+  console.log(knight.snapshot);
+  knight.on('change:square', ({ value }) => console.log(value));
+  knight.on('moved', ({ args }) => console.log(args));
+} finally {
+  await sen.close();
+}
 ```
 
-The session and bus are the two parts of `chess.board`. A single `Sen` instance
-can create interests in several sessions.
+`chess` is the session and `board` is the bus. One root `Sen` instance can
+create interests across several sessions.
 
-## Publish objects from STL
+## Publish JavaScript objects
 
-Load STL once, pass the resulting registry when connecting, then publish by
-class name. The client finds the class and every type it depends on
-automatically.
+Load the application's STL definitions once. `publish()` resolves the class and
+its dependent types, then returns a persistent handle that survives reconnects.
 
 ```js
 import { Sen } from 'sen-ether-client';
@@ -47,118 +69,114 @@ const sen = await Sen.connect({
   types
 });
 
-const knight = await sen.publish('board', {
+try {
+  let knight;
+  knight = await sen.publish('board', {
+    name: 'white-knight-b1',
+    className: 'chess.Piece',
+    properties: { color: 'white', kind: 'knight', square: 'b1' },
+    methods: {
+      async move(square) {
+        await knight.update({ square });
+        return true;
+      }
+    }
+  });
+
+  await knight.update({ square: 'c3' });
+  await knight.emit('moved', ['b1', 'c3']);
+} finally {
+  await sen.close();
+}
+```
+
+For multi-session publishing, use a qualified bus such as `chess.board`.
+
+## Properties, methods and events
+
+The consumer and publisher APIs mirror the three main SEN concepts:
+
+| Concept | Publisher | Consumer |
+| --- | --- | --- |
+| Properties | Read `snapshot`; change one or more with `update({...})` | Read `snapshot`; listen with `on('change')` or `on('change:<property>')`; change one writable property with `set(name, value)` |
+| Methods | Expose `methods: { <methodName>(...args) }` handlers | Invoke with `call('<methodName>', args)` and await the decoded result |
+| Events | Send with `emit('<eventName>', args)` | Listen with `on('<eventName>')` or catch all with `on('event')` |
+
+`update({...})` accepts a partial object containing only the properties that
+changed. `set(name, value)` always targets one remote property and requires it
+to be declared `writable` in STL. Method and event arguments are positional
+arrays encoded according to their STL declarations.
+
+### Properties
+
+```js
+// Publisher
+await published.update({ square: 'c3' });
+
+// Consumer
+object.on('change:square', ({ value }) => console.log(value));
+await object.set('square', 'd5'); // when STL declares it writable
+```
+
+Writable properties are handled automatically by the publisher. Define a
+`setNextSquare` method only when custom validation or side effects are needed.
+
+### Methods
+
+```js
+// Publisher
+let published;
+published = await sen.publish('board', {
   name: 'white-knight-b1',
   className: 'chess.Piece',
-  properties: {
-    color: 'white',
-    kind: 'knight',
-    square: 'b1'
+  properties: { square: 'b1' },
+  methods: {
+    async move(square) {
+      await published.update({ square });
+      return true;
+    }
   }
 });
 
-await knight.update({ square: 'c3' });
-await knight.remove();
-await sen.close();
+// Consumer
+const accepted = await object.call('move', ['c3']);
 ```
 
-`publish()` is the usual producer API. It returns a handle with `update(patch)`
-and `remove()`, and retains the object if the local session reconnects. An
-update sends only the properties in its patch; you do not need to repeat the
-full object state.
-
-With a root client that has no `session`, use a qualified bus name such as
-`chess.board`. Its first segment is the session and the remaining segment is the
-bus. This is useful when one process publishes in several Sen sessions.
-
-### Writable properties
-
-An STL property marked `writable` can be changed by a remote consumer without
-adding a JavaScript method handler to the publisher:
+### Events
 
 ```js
-const board = await sen.interest('SELECT * FROM chess.board');
-const knight = await board.waitFor('white-knight-b1');
+// Publisher
+await published.emit('moved', ['b1', 'c3']);
 
-await knight.set('square', 'c3');
-```
-
-The publisher updates the property and broadcasts its normal Sen update. Add a
-`setNextSquare` handler only when the application needs custom validation or
-side effects. Application commands such as `accept` or `delete` remain normal
-methods under `methods` when publishing.
-
-## Listen for updates
-
-```js
-const objects = await sen.interest('SELECT * FROM chess.board');
-
-objects.on('object', object => {
-  console.log('appeared:', object.name);
-});
-
-objects.on('change', ({ object, name, value }) => {
-  console.log(object.name, name, value);
-});
-
-objects.on('remove', object => {
-  console.log('removed:', object.name);
+// Consumer
+object.on('moved', ({ args, creationTimeNs }) => {
+  const [from, to] = args;
 });
 ```
 
-For high-rate data, request only the properties used by the UI and receive
-batches:
+Event names, inherited event specs, argument types, transport mode and member
+IDs come from the published object's STL `ClassTypeSpec`.
+
+## High-rate telemetry
+
+Select only required properties and batch changes for UI or gateway workloads:
 
 ```js
-const objects = await sen.interest('SELECT * FROM chess.board', {
-  properties: ['color', 'kind', 'square'],
+const tracks = await sen.interest('SELECT * FROM tactical.tracks', {
+  properties: ['latitude', 'longitude', 'altitude'],
   changeMode: 'batch',
   coalesce: true
 });
 
-objects.on('changes', ({ changes }) => {
-  // Forward one compact update to a browser or another consumer.
+tracks.on('changes', ({ changes, dropped }) => {
+  // Forward one compact batch.
 });
 ```
 
-## Connections
+Queue size, interval and backpressure policies are configurable; see
+[API.md](./API.md#seninterest).
 
-The default connection uses normal Sen multicast discovery. When Sen defines a
-different discovery port, use the same environment variable:
-
-```bash
-export SEN_ETHER_DISCOVERY_PORT=60543
-```
-
-For local multicast testing, select loopback explicitly:
-
-```js
-const sen = await Sen.connect({
-  session: 'chess',
-  interfaceAddress: '127.0.0.1',
-  listenHost: '127.0.0.1',
-  advertisedHost: '127.0.0.1'
-});
-```
-
-If the installation uses a TCP discovery hub instead, pass its address:
-
-```js
-const sen = await Sen.connect({
-  session: 'chess',
-  tcpHub: '127.0.0.1:65222'
-});
-```
-
-## STL support
-
-`Sen.loadStl()` accepts an STL file or directory and resolves imports before it
-returns. The resulting registry is reusable for every publication. It supports
-classes and inheritance, properties, methods, structs, enums, sequences,
-aliases, optionals, variants, quantities, namespaces, imports, and qualified
-names.
-
-The normal workflow is simply:
+## STL
 
 ```js
 const types = await Sen.loadStl('./stl', {
@@ -167,28 +185,51 @@ const types = await Sen.loadStl('./stl', {
 const sen = await Sen.connect({ types });
 ```
 
-You can still pass a `spec` or extra `types` directly when an application
-builds TypeSpecs itself. Most applications do not need to do that.
+The parser supports classes and inheritance, properties, methods, events,
+structs, enums, sequences, aliases, optionals, variants, quantities, namespaces
+and imports. Explicit TypeSpecs remain supported, but most applications should
+load STL.
+
+## Sessions, buses and discovery
+
+Multicast discovery is the default. On multi-interface hosts, select the SEN
+interface explicitly:
+
+```js
+const sen = await Sen.connect({
+  session: 'chess',
+  interfaceAddress: '192.0.2.10'
+});
+```
+
+For a TCP discovery hub:
+
+```js
+const sen = await Sen.connect({
+  session: 'chess',
+  tcpHub: '127.0.0.1:65222'
+});
+```
+
+Use `sen.listSessions()`, `sen.listBuses()` and `sen.discoverBuses()` for
+navigation. `SEN_ETHER_DISCOVERY_PORT` changes the default discovery port.
 
 ## CLI
 
-List visible Sen processes:
-
 ```bash
 npx sen-ether-scan --timeout 3000
-```
-
-Inspect a bus:
-
-```bash
 npx sen-ether-probe --bus chess.board
 ```
 
 ## Compatibility
 
-`sen-ether-client@0.3.x` supports Sen kernel protocol `9` and ether protocol
-`2`. The versions are checked during the Sen handshake.
+| sen-ether-client | Node.js | SEN kernel | Ether |
+| --- | --- | --- | --- |
+| 0.4.x | >= 22 | 9 | 2 |
 
-## API reference
+The library is JavaScript ESM and has no runtime dependencies.
 
-See [API.md](./API.md) for all options and public methods.
+## API reference and examples
+
+See [API.md](./API.md) for the complete API and [`examples/`](./examples) for
+small runnable consumer, publisher, method and event programs.
