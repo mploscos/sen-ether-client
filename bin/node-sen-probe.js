@@ -7,8 +7,7 @@ import { decodePropertyValues } from '../lib/values.js';
 function parseArgs(argv) {
   const options = {
     timeout: 3000,
-    listen: 10000,
-    bus: 'scenario.control'
+    listen: 10000
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -58,7 +57,7 @@ Options:
                       Use SEN TcpDiscoveryHub instead of multicast discovery
   --session <name>    SEN session name filter
   --app <name>        SEN appName substring filter
-  --bus <name>        Bus to join. Default: scenario.control
+  --bus <name>        Bus to join and inspect
   --query <query>     Interest query. Default: SELECT * FROM <bus>
   --force-bus         Join even if the remote process has not announced the bus
   -h, --help          Show this help
@@ -148,6 +147,31 @@ async function waitForRemoteBus(emitter, remoteBuses, busName, timeoutMs) {
     };
 
     emitter.on('busJoined', onBusJoined);
+  });
+}
+
+async function waitForRemoteBusAnnouncements(emitter, remoteBuses, timeoutMs) {
+  const settleMs = Math.min(100, timeoutMs);
+  await new Promise(resolve => {
+    let settleTimeout;
+    const timeout = setTimeout(done, timeoutMs);
+
+    function done() {
+      clearTimeout(timeout);
+      clearTimeout(settleTimeout);
+      emitter.off('busJoined', onBusJoined);
+      resolve();
+    }
+
+    function onBusJoined() {
+      clearTimeout(settleTimeout);
+      settleTimeout = setTimeout(done, settleMs);
+    }
+
+    emitter.on('busJoined', onBusJoined);
+    if (remoteBuses.size) {
+      settleTimeout = setTimeout(done, settleMs);
+    }
   });
 }
 
@@ -245,12 +269,6 @@ try {
 
   console.log('[target]');
   printProcess(target, '*');
-
-  const bus = etherBusName(target.session.name, options.bus);
-  const query = options.query ?? `SELECT * FROM ${queryBusName(target.session.name, options.bus)}`;
-  if (bus !== options.bus) {
-    console.log(`[bus] normalized ${options.bus} -> ${bus} for ether session=${target.session.name}`);
-  }
 
   const client = new EtherClient({
     sessionName: target.session.name,
@@ -400,6 +418,20 @@ try {
 
   await client.connect(target);
   await waitForEvent(client, 'ready', 3000);
+  if (!options.bus) {
+    await waitForRemoteBusAnnouncements(client, remoteBuses, Math.min(options.timeout, 1000));
+    const announced = [...remoteBuses].sort().join(', ') || '<none>';
+    console.log(`[probe] announced buses: ${announced}`);
+    console.log('[probe] use --bus <name> to inspect objects');
+    await client.close();
+    process.exit(0);
+  }
+
+  const bus = etherBusName(target.session.name, options.bus);
+  const query = options.query ?? `SELECT * FROM ${queryBusName(target.session.name, options.bus)}`;
+  if (bus !== options.bus) {
+    console.log(`[bus] normalized ${options.bus} -> ${bus} for ether session=${target.session.name}`);
+  }
   if (!options.forceBus) {
     await waitForRemoteBus(client, remoteBuses, bus, 3000).catch(error => {
       client.close();

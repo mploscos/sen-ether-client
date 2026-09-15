@@ -1,18 +1,20 @@
+// @ts-check
 import { Sen } from 'sen-ether-client';
+import { publishCounter } from './stl.mjs';
+import path from 'path';
 
-const types = await Sen.loadStl(new URL('./stl', import.meta.url).pathname);
+const types = await Sen.loadStl(path.join(process.cwd(), './stl'));
 const sen = await Sen.connect({ session: 'demo', announceDiscovery: true, types });
 
 try {
-  let counter;
-  counter = await sen.publish('devices', {
+  const counter = await publishCounter(sen, 'devices', {
     name: 'counter-1',
     className: 'demo.Counter',
     properties: { count: 0 },
     methods: {
       async increment(delta) {
-        const count = counter.snapshot.count + delta;
-        await counter.update({ count });
+        const count = this.state.count + delta;
+        await this.update({ count });
         return count;
       }
     }

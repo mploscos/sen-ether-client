@@ -4,12 +4,14 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import { decodeKernelControlMessage, encodeKernelControlMessage } from '../lib/bus.js';
 import { EtherClient } from '../lib/client.js';
 import { crc32 } from '../lib/crc32.js';
 import { Sen } from '../index.js';
 import { parseStl, resolveStl, StlResolutionError, StlSyntaxError, tokenizeStl } from '../lib/stl.js';
+import { generateStlModule } from '../lib/stl-module.js';
 
 const COMPLEX_STL = `
 package stl_resolver_test;
@@ -138,7 +140,10 @@ test('every adapted TypeSpec is accepted by the existing SEN binary codec', () =
   };
   const decoded = decodeKernelControlMessage(encodeKernelControlMessage(response));
   assert.equal(decoded.value.types.length, types.size);
-  assert.equal(decoded.value.types.find(item => item.spec.qualifiedName === 'stl_resolver_test.ValidClass').spec.data.type, 'ClassTypeSpec');
+  const classSpec = decoded.value.types.find(item => item.spec.qualifiedName === 'stl_resolver_test.ValidClass').spec;
+  assert.equal(classSpec.data.type, 'ClassTypeSpec');
+  assert.equal(classSpec.data.value.methods[0].name, 'methodWithArguments');
+  assert.equal(classSpec.data.value.events[0].name, 'eventWithArguments');
 });
 
 test('Sen.loadStl resolves a directory once, including relative imports', async () => {
@@ -148,7 +153,7 @@ test('Sen.loadStl resolves a directory once, including relative imports', async 
     await writeFile(path.join(directory, 'common', 'point.stl'), 'package demo.common; struct Point { latitude: f64, longitude: f64 }');
     await writeFile(path.join(directory, 'track.stl'), 'import "common/point.stl"\npackage demo; class Track { var point: demo.common.Point; }');
 
-    const registry = await Sen.loadStl(directory);
+    const registry = await Sen.loadStl(pathToFileURL(directory));
     assert.equal(registry.get('demo.Track').properties[0].type, 'demo.common.Point');
     assert.equal(registry.toTypeSpecs().get('demo.Track').data.type, 'ClassTypeSpec');
   } finally {
@@ -196,6 +201,21 @@ test('EtherClient selects the STL ClassTypeSpec when publishing without spec', (
   }, { types });
   assert.equal(published.spec.qualifiedName, 'demo.Track');
   assert.equal(published.spec.data.value.properties[0].type, 'demo.Point');
+  assert.throws(() => client.publishObjects('tracks', {
+    name: 'bad-track', className: 'demo.DoesNotExist', properties: { point: { latitude: 40 } }
+  }, { types }), /was not found in the configured STL types/);
+});
+
+test('STL module generator emits self-contained JSDoc and typed class helpers', () => {
+  const module = generateStlModule(resolveStl('complex.stl', { sources: { 'complex.stl': COMPLEX_STL } }));
+  assert.match(module, /@typedef .*ValidClassProperties/s);
+  assert.match(module, /@callback ValidClassMethodWithArgumentsMethod/);
+  assert.match(module, /@param \{number\} lhs/);
+  assert.match(module, /eventWithArguments: \[when: number, where: string\]/);
+  assert.match(module, /className: "stl_resolver_test.ValidClass"/);
+  assert.match(module, /export async function publishValidClass/);
+  assert.match(module, /export async function waitForValidClass/);
+  assert.doesNotMatch(module, /^ \*\s+(?:readonly )?id\??:/m);
 });
 
 test('syntax errors carry a source location', () => {

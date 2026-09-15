@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { compileInterestQuery } from '../lib/interest-query.js';
 import { once } from 'node:events';
 import net from 'node:net';
@@ -62,6 +63,34 @@ async function canListenTcp() {
       await new Promise(resolve => server.close(resolve));
     }
   }
+}
+
+async function runProbe(args, timeoutMs = 5000) {
+  const child = spawn(process.execPath, ['./bin/node-sen-probe.js', ...args], {
+    cwd: new URL('..', import.meta.url),
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  child.stderr.on('data', chunk => { stderr += chunk; });
+
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`probe did not exit within ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.once('error', error => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once('close', code => {
+      clearTimeout(timeout);
+      resolve({ code, stdout, stderr });
+    });
+  });
 }
 
 test('EtherClient uses SEN query hash as the default native interest id', () => {
@@ -295,6 +324,40 @@ test('EtherClient discovers JS peers through a TCP discovery hub', async t => {
   }
 });
 
+test('sen-ether-probe lists announced buses without selecting a default bus', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const discovery = await createDiscoveryHub();
+  const publisher = new EtherClient({
+    sessionName: 'probe-list',
+    appName: 'publisher',
+    busMulticast: false,
+    tcpHub: discovery.hub,
+    beamPeriodMs: 50
+  });
+  try {
+    await publisher.start({ listenHost: '127.0.0.1', advertisedHost: '127.0.0.1' });
+    await publisher.joinBus('devices');
+
+    const result = await runProbe([
+      '--tcp-hub', discovery.hub,
+      '--session', 'probe-list',
+      '--timeout', '1000'
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /\[ether\] remote bus joined name=devices/);
+    assert.match(result.stdout, /\[probe\] announced buses: devices/);
+    assert.doesNotMatch(result.stdout + result.stderr, /scenario\.control/);
+  } finally {
+    await publisher.close();
+    await discovery.close();
+  }
+});
+
 test('EtherClient discovers JS peers through multicast discovery', async t => {
   if (!await canListenTcp()) {
     t.skip('TCP listen is not permitted in this test environment');
@@ -355,10 +418,11 @@ test('published query predicates preserve classes, literals and expression prece
     "SELECT demo.Base FROM js.tree WHERE name = 'A  B' AND altitude > 12",
     'SELECT * FROM js.tree WHERE (altitude + 2.5) / 3 = 5 AND position.x IN (-2, 3)',
     'SELECT * FROM js.tree WHERE NOT altitude < 10',
-    'SELECT * FROM js.tree WHERE id = 42'
+    'SELECT * FROM js.tree WHERE id = "A  B"'
   ]) assert.equal(compileInterestQuery(query)(object, types), true, query);
   for (const query of [
     'SELECT demo.Other FROM js.tree',
+    'SELECT * FROM js.tree WHERE id = 42',
     'SELECT demo.Track FROM js.tree WHERE id = "other"',
     'SELECT * FROM js.tree WHERE missing != 1',
     'SELECT * FROM js.tree WHERE altitude < 5 OR position.x > 0'
@@ -403,14 +467,16 @@ test('JavaScript publisher filters each interest and updates membership when WHE
       'SELECT * FROM js.tree',
       'SELECT demo.InstrumentData FROM js.tree',
       'SELECT demo.InstrumentData FROM js.tree WHERE name == "InstrumentData" AND altitude > 15',
-      'SELECT * FROM js.tree WHERE name = "AircraftInfo"'
+      'SELECT * FROM js.tree WHERE name = "AircraftInfo"',
+      'SELECT * FROM js.tree WHERE id = "AircraftInfo"'
     ];
     for (let i = 0; i < queries.length; i++) consumer.startInterest('tree', queries[i], {id:101+i});
-    await until(() => memberships.has(104));
+    await until(() => memberships.has(105));
     assert.deepEqual([...memberships.get(101)].sort(), ['AircraftInfo','InstrumentData']);
     assert.deepEqual([...memberships.get(102)], ['InstrumentData']);
     assert.equal(memberships.has(103), false);
     assert.deepEqual([...memberships.get(104)], ['AircraftInfo']);
+    assert.deepEqual([...memberships.get(105)], ['AircraftInfo']);
     publisher.updatePublishedObject('tree', 'InstrumentData', {altitude:20});
     await until(() => memberships.has(103));
     assert.deepEqual([...memberships.get(103)], ['InstrumentData']);

@@ -199,6 +199,16 @@ returns a reusable registry. It is a Node.js filesystem helper; the parser and
 resolver themselves are pure JavaScript. Load once during startup, rather than
 while publishing objects.
 
+The path may be absolute, relative to `process.cwd()`, or a `file:` `URL`.
+When configured types are passed to publishing, an unknown `className` is an
+error; inference is used only when no type registry is supplied.
+
+Generate a typed JavaScript helper module for an STL tree with:
+
+```bash
+npx sen-stl-types ./stl --output ./stl.mjs
+```
+
 By default, interest creation uses the SEN-native `CRC32(query)` value as the
 interest id. Pass `options.id` only when a caller must force a specific native
 interest id.
@@ -227,9 +237,10 @@ presence beams announce sessions/processes but not the bus list.
 
 JavaScript publishers filter each remote interest by its selected class (including
 registered base classes) and `WHERE` expression. Conditions read published
-properties, including nested fields. As in native SEN, `name` is the object
-name and `id` is its numeric protocol identifier. Updating properties adds or removes objects
-from matching interests automatically.
+properties, including nested fields. As in native SEN, `name` identifies the
+object at application level. The numeric protocol `ObjectId` is internal and is
+unrelated to a property named `id` declared in STL. Updating properties adds or
+removes objects from matching interests automatically.
 
 Supported conditions use quoted strings, numbers, booleans, comparisons
 (`=`, `==`, `!=`, `<>`, `<`, `<=`, `>`, `>=`), arithmetic, parentheses,
@@ -343,9 +354,10 @@ On a root producer without `session`, the first segment of `publish()`'s bus
 name is the session and the rest is the local bus. Pass `{ session }` when the
 local bus itself contains dots. Interest query handling is unchanged.
 
-When no `spec` is provided, `sen-ether-client` first looks up `className` in
-the `types` passed to `Sen.connect`; it falls back to scalar-property inference
-only when no matching STL class or explicit spec is supplied.
+When no `spec` is provided, `sen-ether-client` looks up `className` in the
+`types` passed to `Sen.connect`. If a registry is configured, an unknown class
+is rejected. Scalar-property inference is used only when no registry or
+explicit spec is supplied.
 
 Main events:
 

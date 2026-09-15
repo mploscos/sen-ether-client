@@ -185,6 +185,17 @@ const types = await Sen.loadStl('./stl', {
 const sen = await Sen.connect({ types });
 ```
 
+Paths may be relative to the current working directory. A `file:` URL is also
+accepted, which is convenient for paths relative to an ES module:
+
+```js
+const types = await Sen.loadStl(new URL('./stl', import.meta.url));
+```
+
+When a type registry is supplied, publishing rejects a `className` that is not
+present in that registry. Without configured types, scalar-property inference
+remains available for simple dynamic objects.
+
 The parser supports classes and inheritance, properties, methods, events,
 structs, enums, sequences, aliases, optionals, variants, quantities, namespaces
 and imports. Explicit TypeSpecs remain supported, but most applications should
@@ -218,7 +229,56 @@ navigation. `SEN_ETHER_DISCOVERY_PORT` changes the default discovery port.
 
 ```bash
 npx sen-ether-scan --timeout 3000
+npx sen-ether-probe
 npx sen-ether-probe --bus chess.board
+npx sen-stl-types ./stl --output ./stl.mjs
+```
+
+Without `--bus`, `sen-ether-probe` connects to the selected process, prints its
+announced buses and exits. Pass `--bus <name>` to join a bus and inspect its
+objects.
+
+`sen-stl-types` generates a self-contained ESM module with JSDoc types and one
+pair of helpers per STL class: `publish<Class>()` and `waitFor<Class>()`. Use
+`-I <directory>` (repeatable) for additional import paths.
+
+The bundled Counter example includes its generated `stl.mjs`. Regenerate it
+from the repository root with:
+
+```bash
+npx sen-stl-types ./examples/stl --output ./examples/stl.mjs
+```
+
+The generated helpers give JavaScript contextual typing without local JSDoc
+imports or casts:
+
+```js
+// @ts-check
+import { publishCounter } from './stl.mjs';
+
+const counter = await publishCounter(sen, 'devices', {
+  name: 'counter-1',
+  className: 'demo.Counter',
+  properties: { count: 0 },
+  methods: {
+    async increment(delta) {
+      const count = this.state.count + delta;
+      await this.update({ count });
+      return count;
+    }
+  }
+});
+```
+
+Consumers use the matching wait helper:
+
+```js
+import { waitForCounter } from './stl.mjs';
+
+const counter = await waitForCounter(counters, 'counter-1');
+
+counter.on('change:count', ({ value }) => console.log(value));
+await counter.call('increment', [1]);
 ```
 
 ## Compatibility

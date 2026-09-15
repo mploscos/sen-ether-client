@@ -1,10 +1,14 @@
+// @ts-check
 import { Sen } from 'sen-ether-client';
+import { publishCounter } from './stl.mjs';
 
-const types = await Sen.loadStl(new URL('./stl', import.meta.url).pathname);
+import path from 'path';
+
+const types = await Sen.loadStl(path.join(process.cwd(), './stl'));
 const sen = await Sen.connect({ session: 'demo', announceDiscovery: true, types });
 
 try {
-  const counter = await sen.publish('devices', {
+  const counter = await publishCounter(sen, 'devices', {
     name: 'event-counter',
     className: 'demo.Counter',
     properties: { count: 10 }

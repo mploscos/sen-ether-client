@@ -86,12 +86,12 @@
  * @typedef {object} SenPublishedObjectDescriptor
  * @property {string} name SEN object name.
  * @property {string} className SEN class name.
- * @property {number} [id] Optional stable object id. Defaults to CRC32(name).
+ * @property {number} [id] Advanced protocol ObjectId override. Normally omit it and identify the object by name. This is unrelated to an STL property named `id`.
  * @property {number} [typeHash] Optional class hash. Defaults to CRC32(className).
  * @property {object} [properties] Current object property values.
  * @property {object} [snapshot] Alias for properties.
  * @property {object} [methods] JavaScript handlers for methods declared in the class.
- * @property {object} [spec] Optional SEN ClassTypeSpec. If omitted, the class is resolved from configured STL types, then inferred from scalar properties.
+ * @property {object} [spec] Optional SEN ClassTypeSpec. If omitted, the class is resolved from configured STL types. Scalar inference is used only when no types are configured.
  * @property {bigint|number|string} [timestamp] Optional SEN timestamp in ns.
  */
 
@@ -134,3 +134,5 @@ export {
   SenInterest,
   SenRemoteObject
 } from './lib/sen.js';
+
+export { generateStlModule } from './lib/stl-module.js';

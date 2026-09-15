@@ -1,6 +1,6 @@
 {
   "name": "sen-ether-client",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Pure JavaScript SEN Ether client for consuming and publishing SEN objects from Node.js",
   "senCompatibility": {
     "kernelProtocolVersion": 9,
@@ -9,8 +9,9 @@
   "type": "module",
   "main": "index.js",
   "bin": {
-    "sen-ether-scan": "./bin/node-sen-scan.js",
-    "sen-ether-probe": "./bin/node-sen-probe.js"
+    "sen-ether-scan": "bin/node-sen-scan.js",
+    "sen-ether-probe": "bin/node-sen-probe.js",
+    "sen-stl-types": "bin/sen-stl-types.js"
   },
   "files": [
     "API.md",
