@@ -212,11 +212,87 @@ test('EtherClient routes published objects between two JS participants', async t
     });
 
     const [event] = await received;
+    const publisherBus = publisher.buses.get(crc32('tree'));
+    assert.equal(event.ownerId, publisherBus.participantId);
     assert.equal(event.discoveries[0].interestId, 77);
     assert.equal(event.discoveries[0].objects[0].name, 'node1');
   } finally {
     await publisher.close();
     await consumer.close();
+  }
+});
+
+test('EtherClient keeps owner and remote publisher objects unique across a star bus topology', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const options = { sessionName: 'js-star', busMulticast: false, multicastDiscovery: false };
+  const owner = new EtherClient({ ...options, appName: 'owner' });
+  const publisher = new EtherClient({ ...options, appName: 'publisher' });
+  const consumer = new EtherClient({ ...options, appName: 'consumer' });
+  try {
+    await owner.start({ listenHost: '127.0.0.1', listenPort: 0 });
+    await publisher.start({ listenHost: '127.0.0.1', listenPort: 0 });
+    await consumer.start({ listenHost: '127.0.0.1', listenPort: 0 });
+    await owner.joinBus('interest', { participantId: 100 });
+    await publisher.joinBus('interest', { participantId: 200 });
+    await consumer.joinBus('interest', { participantId: 300 });
+    owner.publishObjects('interest', {
+      id: 10, name: 'simulator-interest-source', className: 'demo.Empty', properties: {}
+    });
+    publisher.publishObjects('interest', {
+      id: 1, name: 'before-interest', className: 'demo.Empty', properties: {}
+    });
+
+    const publisherReady = waitFor(publisher, 'ready');
+    const consumerReady = waitFor(consumer, 'ready');
+    await publisher.connect(owner.listenEndpoint);
+    await consumer.connect(owner.listenEndpoint);
+    await Promise.all([publisherReady, consumerReady]);
+
+    const remoteInterest = waitFor(publisher, 'remoteInterestStarted');
+    const received = [];
+    consumer.on('objectsPublished', event => {
+      for (const discovery of event.discoveries) {
+        for (const object of discovery.objects) {
+          received.push({ ownerId: event.ownerId, interestId: discovery.interestId, ...object });
+        }
+      }
+    });
+    consumer.startInterest('interest', 'SELECT * FROM js-star.interest', { id: 77 });
+    const [started] = await remoteInterest;
+    assert.equal(started.participantId, 300);
+
+    const initialDeadline = Date.now() + 3000;
+    while (Date.now() < initialDeadline && new Set(received.map(object => object.name)).size < 2) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.deepEqual(received.map(object => object.name).sort(), [
+      'before-interest',
+      'simulator-interest-source'
+    ]);
+    assert.deepEqual(received.map(object => object.ownerId).sort(), [100, 200]);
+
+    publisher.publishObjects('interest', {
+      id: 2, name: 'after-interest', className: 'demo.Model', properties: { value: 2 }
+    });
+    const finalDeadline = Date.now() + 3000;
+    while (Date.now() < finalDeadline && received.length < 3) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.deepEqual(received.map(object => `${object.ownerId}:${object.id}:${object.interestId}`).sort(), [
+      '100:10:77',
+      '200:1:77',
+      '200:2:77'
+    ]);
+  } finally {
+    await consumer.close();
+    await publisher.close();
+    await owner.close();
   }
 });
 

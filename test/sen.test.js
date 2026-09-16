@@ -6,6 +6,7 @@ import { Sen, SenInterest, SenPublishedObject, SenRemoteObject } from '../index.
 import { SenBus } from '../lib/sen.js';
 import { createProcessInfo, EtherClient, validateRemoteHello } from '../lib/client.js';
 import { SenBinaryWriter } from '../lib/codec.js';
+import { crc32 } from '../lib/crc32.js';
 import { eventHash, methodHash, propertyHash } from '../lib/hash32.js';
 import { encodeArguments, encodeValue } from '../lib/values.js';
 
@@ -1155,6 +1156,146 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
     await producerC?.close().catch(() => {});
     await producerA.close().catch(() => {});
     await producerB.close().catch(() => {});
+  }
+});
+
+test('Sen relays remote publications through a three-participant bus owner', async t => {
+  if (!await canListenTcp()) {
+    t.skip('TCP listen is not permitted in this test environment');
+    return;
+  }
+
+  const session = `js-star-${process.pid}-${Date.now()}`;
+  const basePort = 55000 + (process.pid % 300);
+  const common = {
+    session,
+    localSession: true,
+    reconnect: false,
+    timeout: 3000,
+    busMulticast: false,
+    listenHost: '127.0.0.1',
+    advertisedHost: '127.0.0.1',
+    interfaceAddress: '127.0.0.1',
+    beamPeriodMs: 100
+  };
+  const interestSourceSpec = {
+    name: 'InterestSource',
+    qualifiedName: 'bonsai_conductor.InterestSource',
+    description: '',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [], properties: [], methods: [], events: [],
+        constructor: { name: '', description: '', args: [], returnType: '' },
+        isInterface: false
+      }
+    }
+  };
+  const nodeModelSpec = {
+    name: 'NodeModel',
+    qualifiedName: 'bonsai_core.NodeModel',
+    description: '',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [
+          { id: propertyHash('label'), name: 'label', description: '', category: 'dynamicRO', type: 'string', transportMode: 'confirmed', tags: [], checkedSet: false },
+          { id: propertyHash('ticks'), name: 'ticks', description: '', category: 'dynamicRO', type: 'i32', transportMode: 'confirmed', tags: [], checkedSet: false }
+        ],
+        methods: [], events: [],
+        constructor: { name: '', description: '', args: [], returnType: '' },
+        isInterface: false
+      }
+    }
+  };
+  const types = new Map([
+    [interestSourceSpec.qualifiedName, interestSourceSpec],
+    [nodeModelSpec.qualifiedName, nodeModelSpec]
+  ]);
+  const owner = await Sen.connect({ ...common, appName: 'bus-owner', port: basePort, types });
+  const publisher = await Sen.connect({ ...common, appName: 'remote-publisher', port: basePort + 1, types });
+  const consumer = await Sen.connect({ ...common, appName: 'remote-consumer', port: basePort + 2 });
+  let ownerSource;
+  let beforeInterest;
+  let afterInterest;
+
+  try {
+    ownerSource = await owner.publish('interest', {
+      id: 1,
+      name: 'simulator-interest-source',
+      className: interestSourceSpec.qualifiedName,
+      properties: {}
+    });
+
+    await publisher.client.connect(owner.client.listenEndpoint);
+    await publisher.waitForRemoteBus('interest', 3000);
+    beforeInterest = await publisher.publish('interest', {
+      id: 2,
+      name: 'probe-061-interest-source',
+      className: interestSourceSpec.qualifiedName,
+      properties: {}
+    });
+
+    await consumer.client.connect(owner.client.listenEndpoint);
+    await consumer.waitForRemoteBus('interest', 3000);
+    const relayedInterest = once(publisher.client, 'remoteInterestStarted');
+    const publications = [];
+    consumer.client.on('objectsPublished', event => publications.push(event));
+    const interest = await consumer.interest(`SELECT * FROM ${session}.interest`, { forceBus: true });
+    await relayedInterest;
+
+    afterInterest = await publisher.publish('interest', {
+      id: 3,
+      name: 'probe-061-node-model',
+      className: nodeModelSpec.qualifiedName,
+      properties: { label: 'initial', ticks: 1 }
+    });
+
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const objects = interest.objects();
+      if (objects.length === 3 && objects.every(object => object.spec)) break;
+      await wait(25);
+    }
+
+    const objects = interest.objects();
+    const ownerParticipantId = owner.client.buses.get(crc32('interest')).participantId;
+    const publisherParticipantId = publisher.client.buses.get(crc32('interest')).participantId;
+    assert.deepEqual(objects.map(object => object.name).sort(), [
+      'probe-061-interest-source',
+      'probe-061-node-model',
+      'simulator-interest-source'
+    ]);
+    assert.equal(new Set(objects.map(object => object.key)).size, 3);
+    assert.equal(objects.find(object => object.name === 'probe-061-interest-source').ownerId, publisherParticipantId);
+    assert.equal(objects.find(object => object.name === 'probe-061-node-model').ownerId, publisherParticipantId);
+    assert.equal(objects.find(object => object.name === 'simulator-interest-source').ownerId, ownerParticipantId);
+    assert.equal(publications.length, 3);
+    assert.deepEqual([...new Set(publications.map(event => event.ownerId))].sort(), [
+      ownerParticipantId,
+      publisherParticipantId
+    ].sort());
+
+    const remoteModel = objects.find(object => object.name === 'probe-061-node-model');
+    assert.deepEqual(remoteModel.snapshot, { label: 'initial', ticks: 1 });
+    await afterInterest.update({ label: 'updated', ticks: 2 });
+    const updateDeadline = Date.now() + 3000;
+    while (Date.now() < updateDeadline && remoteModel.snapshot.ticks !== 2) await wait(25);
+    assert.deepEqual(remoteModel.snapshot, { label: 'updated', ticks: 2 });
+
+    await beforeInterest.remove();
+    const removalDeadline = Date.now() + 3000;
+    while (Date.now() < removalDeadline && interest.objects().some(object => object.name === beforeInterest.name)) await wait(25);
+    assert.deepEqual(interest.objects().map(object => object.name).sort(), [
+      'probe-061-node-model',
+      'simulator-interest-source'
+    ]);
+    assert.equal(publications.every(event => event.ownerId === ownerParticipantId || event.ownerId === publisherParticipantId), true);
+  } finally {
+    await consumer.close().catch(() => {});
+    await publisher.close().catch(() => {});
+    await owner.close().catch(() => {});
   }
 });
 
