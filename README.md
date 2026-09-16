@@ -9,7 +9,7 @@ through the SEN Ether component.
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/sen-ether-client)](./LICENSE)
 
-**Pure JavaScript · No native bindings · No local SEN installation · Multi-session · STL support · Automatic reconnect**
+**Pure JavaScript · No native bindings · No local SEN installation · Multi-session · STL/HLA FOM support · Automatic reconnect**
 
 ## Install
 
@@ -27,6 +27,7 @@ npm install sen-ether-client
 | Methods | call | expose |
 | Events | listen | emit |
 | STL types | ✅ | ✅ |
+| HLA FOM XML types | ✅ | ✅ |
 | Reconnect | ✅ | ✅ |
 
 SEN kernel protocol **9** and Ether protocol **2** are supported and checked
@@ -198,8 +199,32 @@ remains available for simple dynamic objects.
 
 The parser supports classes and inheritance, properties, methods, events,
 structs, enums, sequences, aliases, optionals, variants, quantities, namespaces
-and imports. Explicit TypeSpecs remain supported, but most applications should
-load STL.
+and imports. Imports ending in `.xml` are loaded as IEEE 1516.2-2010 HLA FOM
+modules and converted to the same SEN type registry. Explicit TypeSpecs remain
+supported, but most applications should load STL.
+
+## HLA FOM XML
+
+Load a FOM layout directly when no STL entry file is needed:
+
+```js
+const types = await Sen.loadFom('./fom', {
+  mappingPaths: ['./application-mappings.xml']
+});
+const sen = await Sen.connect({ types });
+```
+
+`./fom` may be a module directory containing XML documents, a root containing
+one directory per package, or one XML file in a SEN-style FOM layout. For an
+XML import from STL, the imported file's parent directory is the package and
+its grandparent is the layout root. XML files at that root are treated as SEN
+mapping documents.
+
+The loader supports FOM dependencies, basic and simple data, enumerations,
+arrays, fixed and variant records, object classes, attributes, interactions,
+optional semantics, transport modes, and SEN property/method/event mappings.
+It imports the FOM as a SEN interface; it does not join an HLA federation or
+implement HLA wire encoding.
 
 ## Sessions, buses and discovery
 

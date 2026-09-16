@@ -161,6 +161,86 @@ test('Sen.loadStl resolves a directory once, including relative imports', async 
   }
 });
 
+test('Sen.loadFom converts HLA datatypes, classes and mappings to SEN TypeSpecs', async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'sen-ether-client-fom-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(path.join(directory, 'base'), { recursive: true });
+  await mkdir(path.join(directory, 'demo'), { recursive: true });
+  await writeFile(path.join(directory, 'base', 'Base.xml'), `<?xml version="1.0"?>
+<objectModel>
+  <modelIdentification><name>Base Model</name></modelIdentification>
+  <dataTypes>
+    <basicDataRepresentations>
+      <basicData><name>Unsigned16BE</name><encoding>16-bit unsigned integer</encoding></basicData>
+    </basicDataRepresentations>
+    <simpleDataTypes>
+      <simpleData><name>Count</name><representation>Unsigned16BE</representation><units>NA</units><semantics>A count.</semantics></simpleData>
+    </simpleDataTypes>
+  </dataTypes>
+</objectModel>`);
+  await writeFile(path.join(directory, 'demo', 'Demo.xml'), `<?xml version="1.0"?>
+<objectModel>
+  <modelIdentification>
+    <name>Demo Model</name>
+    <reference><type>Dependency</type><identification>Base Model</identification></reference>
+  </modelIdentification>
+  <objects><objectClass><name>HLAobjectRoot</name><objectClass>
+    <name>Vehicle</name><semantics>A vehicle.</semantics>
+    <attribute><name>Identifier</name><dataType>Count</dataType><updateType>Static</updateType><sharing>PublishSubscribe</sharing><transportation>HLAreliable</transportation><semantics>Identifier.</semantics></attribute>
+    <attribute><name>Location</name><dataType>Position</dataType><updateType>Conditional</updateType><sharing>PublishSubscribe</sharing><transportation>HLAbestEffort</transportation><semantics>Optional. Current position.</semantics></attribute>
+  </objectClass></objectClass></objects>
+  <interactions><interactionClass><name>HLAinteractionRoot</name><interactionClass>
+    <name>Ping</name><transportation>HLAreliable</transportation><semantics>Vehicle ping.</semantics>
+    <parameter><name>Sequence</name><dataType>Count</dataType><semantics>Sequence.</semantics></parameter>
+  </interactionClass></interactionClass></interactions>
+  <dataTypes>
+    <enumeratedDataTypes><enumeratedData><name>Mode</name><representation>Unsigned16BE</representation><semantics>Mode.</semantics>
+      <enumerator><name>OFF</name><value>10</value></enumerator><enumerator><name>ON</name><value>42</value></enumerator>
+    </enumeratedData></enumeratedDataTypes>
+    <fixedRecordDataTypes><fixedRecordData><name>Position</name><semantics>Position.</semantics>
+      <field><name>X</name><dataType>HLAfloat64Time</dataType><semantics>X.</semantics></field>
+      <field><name>Mode</name><dataType>Mode</dataType><semantics>Mode.</semantics></field>
+    </fixedRecordData></fixedRecordDataTypes>
+    <arrayDataTypes><arrayData><name>Positions</name><dataType>Position</dataType><cardinality>[0..8]</cardinality><semantics>Positions.</semantics></arrayData></arrayDataTypes>
+  </dataTypes>
+</objectModel>`);
+  await writeFile(path.join(directory, 'mapping.xml'), `<senMapping><class name="Vehicle">
+    <property name="location" writable="true"/><event hlaInteraction="Ping"/>
+  </class></senMapping>`);
+
+  const registry = await Sen.loadFom(directory);
+  assert.equal(registry.get('base.Count').target, 'u16');
+  assert.equal(registry.get('demo.Mode').values[1].key, 42);
+  assert.equal(registry.get('demo.Positions').maxSize, 8);
+  assert.equal(registry.get('demo.Vehicle').parent, 'hla.ObjectRoot');
+  assert.equal(registry.get('demo.Vehicle').properties[0].category, 'staticRW');
+  assert.equal(registry.get('demo.Vehicle').properties[1].category, 'dynamicRW');
+  assert.equal(registry.get('demo.Vehicle').properties[1].type, 'demo.MaybePosition');
+  assert.equal(registry.get('demo.Vehicle').events[0].name, 'ping');
+  assert.equal(registry.toTypeSpecs().get('demo.Mode').data.value.enums[1].key, 42);
+});
+
+test('Sen.loadStl resolves XML FOM imports in the same registry', async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'sen-ether-client-mixed-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(path.join(directory, 'fom', 'demo'), { recursive: true });
+  await writeFile(path.join(directory, 'fom', 'demo', 'Demo.xml'), `<objectModel>
+    <modelIdentification><name>Demo</name></modelIdentification>
+    <dataTypes><fixedRecordDataTypes><fixedRecordData><name>Point</name><semantics>Point.</semantics>
+      <field><name>X</name><dataType>HLAfloat64Time</dataType><semantics>X.</semantics></field>
+    </fixedRecordData></fixedRecordDataTypes></dataTypes>
+  </objectModel>`);
+  await writeFile(path.join(directory, 'model.stl'), `import "fom/demo/Demo.xml"
+package app;
+struct Track { position: demo.Point }
+class Publisher { var track: Track [static, confirmed]; }
+`);
+  const registry = await Sen.loadStl(path.join(directory, 'model.stl'));
+  assert.equal(registry.get('demo.Point').fields[0].type, 'f64');
+  assert.equal(registry.get('app.Track').fields[0].type, 'demo.Point');
+  assert.equal(registry.toTypeSpecs().get('app.Publisher').data.type, 'ClassTypeSpec');
+});
+
 test('Sen.publishObjects forwards configured STL TypeSpecs for automatic class lookup', async () => {
   const types = resolveStl('types.stl', { sources: {
     'types.stl': 'package demo; struct Point { latitude: f64 } class Track { var point: Point; }'

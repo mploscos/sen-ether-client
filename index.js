@@ -63,7 +63,7 @@
  * @property {Array<{min:number,max:number}>} [busMulticastRange] Four-octet range used to derive native bus multicast groups.
  * @property {object} [target] Already discovered/direct SEN target.
  * @property {import('./lib/stl.js').StlTypeRegistry|Map<string, object>|Record<string, object>|object[]} [types]
- * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl().
+ * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl() or Sen.loadFom().
  */
 
 /**
@@ -136,3 +136,5 @@ export {
 } from './lib/sen.js';
 
 export { generateStlModule } from './lib/stl-module.js';
+export { parseFom, resolveFom, FomResolutionError } from './lib/fom.js';
+export { parseXml, XmlSyntaxError } from './lib/xml.js';

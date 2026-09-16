@@ -8,7 +8,7 @@ import { Sen, SenInterest, SenPublishedObject, SenRemoteObject } from 'sen-ether
 
 ## Compatibility
 
-`sen-ether-client@0.1.x` through `sen-ether-client@0.4.x` support:
+`sen-ether-client@0.1.x` through `sen-ether-client@0.6.x` support:
 
 - kernel protocol `9`
 - ether protocol `2`
@@ -168,6 +168,7 @@ Main methods:
 
 - `await sen.connect(options)`
 - `await Sen.loadStl(sourcePath, options)`
+- `await Sen.loadFom(sourcePath, options)`
 - `await sen.interest(query, options)`
 - `await sen.publish(busName, object, options)`
 - `await sen.publishObject(busName, object, options)`
@@ -199,6 +200,10 @@ returns a reusable registry. It is a Node.js filesystem helper; the parser and
 resolver themselves are pure JavaScript. Load once during startup, rather than
 while publishing objects.
 
+An STL `import` ending in `.xml` is interpreted as an IEEE 1516.2-2010 HLA FOM
+module. Its sibling module directories and mapping XML files are loaded using
+SEN's FOM layout convention and merged into the returned registry.
+
 The path may be absolute, relative to `process.cwd()`, or a `file:` `URL`.
 When configured types are passed to publishing, an unknown `className` is an
 error; inference is used only when no type registry is supplied.
@@ -208,6 +213,22 @@ Generate a typed JavaScript helper module for an STL tree with:
 ```bash
 npx sen-stl-types ./stl --output ./stl.mjs
 ```
+
+### Load HLA FOM XML
+
+```js
+const types = await Sen.loadFom('./fom', {
+  mappingPaths: ['./application-mappings.xml']
+});
+const sen = await Sen.connect({ types });
+```
+
+`sourcePath` can identify a module directory, a layout root containing package
+directories, or one FOM XML file inside a layout. The loader supports document
+dependencies, FOM datatypes and object classes, interactions, optional
+semantics, transport modes, and SEN mappings. It produces SEN TypeSpecs rather
+than HLA wire encoders; connecting to an actual HLA federation still requires
+an adapter.
 
 By default, interest creation uses the SEN-native `CRC32(query)` value as the
 interest id. Pass `options.id` only when a caller must force a specific native
