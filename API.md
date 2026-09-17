@@ -68,6 +68,19 @@ Connection options:
 - `targetDiscoverySettleMs`: target collection window when connecting without a
   fixed session. Defaults to `1000`, matching SEN Ether's default beam period.
   Increase it when producers use a larger `beamPeriod`.
+- `progressiveDiscovery`: defaults to `true`. With no fixed session or target,
+  `connect()` resolves after the multicast socket is listening and has joined the
+  group, or after connecting to the TCP discovery hub. Initial startup errors or
+  timeouts reject; they never report a successful connection. No producers are required.
+  `listSessions()` is then a snapshot and may initially be empty. Each interest
+  waits independently for its session's first beam. TCP scanner
+  connections retry after hub loss. `close()` cancels pending discovery waits.
+  `targetDiscoverySettleMs` does not delay this mode. Fixed-session connections
+  and explicit `discoverBuses()` retain their existing behavior.
+  Set `false` for the legacy snapshot startup contract.
+- `sessionDiscoveryTimeoutMs`: progressive session-discovery deadline, default `0`
+  (wait until discovered or client closed). Transport and bus operations still use
+  `timeout`; this does not retry permanent errors or guarantee bus/data availability.
 - `busDiscoverySettleMs`: max wait after a lightweight session connection while
   bus announcements arrive. Defaults to at least `1000`.
 - `reconnect`: whether to reconnect and restart interests.

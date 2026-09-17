@@ -228,6 +228,15 @@ implement HLA wire encoding.
 
 ## Sessions, buses and discovery
 
+Without a fixed session or target, `await Sen.connect()` now means discovery is
+operational, not that any producers have been found. Sessions are discovered
+continuously; `listSessions()` may initially be empty. Interests wait independently
+for their session, including producers started later, until `sen.close()` cancels
+them. Set `sessionDiscoveryTimeoutMs` to a positive deadline if needed (default
+`0`, unlimited). Transport/bus operation timeouts remain separate. Startup socket
+or hub-connection failures reject `connect()` rather than reporting success.
+For compatibility with the previous snapshot startup, set `progressiveDiscovery: false`.
+
 Multicast discovery is the default. On multi-interface hosts, select the SEN
 interface explicitly:
 

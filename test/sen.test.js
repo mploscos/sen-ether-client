@@ -1032,6 +1032,33 @@ test('recreated interest requests object state again for existing object ids', a
   assert.deepEqual(stateRequests[1].requests[0].objectIds, [42]);
 });
 
+test('concurrent interests on one bus share a single join', async () => {
+  const sen = new Sen({ timeout: 100 });
+  const client = new EventEmitter();
+  let joins = 0;
+  let nextInterestId = 1;
+  client.processInfo = { sessionName: 'hmi' };
+  client.joinBus = async name => {
+    joins += 1;
+    const joined = { busId: 123 };
+    queueMicrotask(() => client.emit('busParticipantReady', { busName: name, busId: joined.busId }));
+    return joined;
+  };
+  client.startInterest = (bus, query) => ({ id: nextInterestId++, busName: bus, query });
+  sen.target = { session: { name: 'hmi' } };
+  sen.client = client;
+  sen.remoteBuses.add('hud');
+
+  const [aircraft, instrument] = await Promise.all([
+    sen.interest('SELECT hmi.AircraftInfo FROM hmi.hud'),
+    sen.interest('SELECT hmi.InstrumentData FROM hmi.hud')
+  ]);
+
+  assert.equal(joins, 1);
+  assert.equal(aircraft.bus, instrument.bus);
+  assert.equal(aircraft.bus.interests.size, 2);
+});
+
 test('Sen keeps multi-producer objects stable after interest recreation', async t => {
   if (!await canListenTcp()) {
     t.skip('TCP listen is not permitted in this test environment');
@@ -1770,6 +1797,54 @@ test('remote object changes expose SEN timestamps as nanosecond BigInts', () => 
   assert.equal(changes.length, 1);
   assert.equal(changes[0].timestamp, 12345n);
   assert.equal(changes[0].timestampNs, 12345n);
+});
+
+test('state resync does not re-emit duplicate or stale property values', () => {
+  const { interest, object } = makeTypedObject();
+  const changes = [];
+  interest.on('change', change => changes.push(change));
+
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 }
+  ]), 'update', 200n);
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 },
+    { name: 'altitude', type: 'f64', value: 1000 }
+  ]), 'state', 200n, { interestId: interest.id });
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 40.0 }
+  ]), 'state', 199n, { interestId: interest.id });
+
+  assert.equal(object.snapshot.latitude, 41.2);
+  assert.equal(object.snapshot.altitude, 1000);
+  assert.equal(object.timestampNs, 200n);
+  assert.equal(object.getPropertyTimestamp('latitude'), 200n);
+  assert.equal(object.getPropertyTimestamp('altitude'), 200n);
+  assert.deepEqual(changes.map(change => [change.source, change.name]), [
+    ['update', 'latitude'],
+    ['state', 'altitude']
+  ]);
+});
+
+test('state resync still emits and applies a genuinely newer property value', () => {
+  const { interest, object } = makeTypedObject();
+  const changes = [];
+  interest.on('change', change => changes.push(change));
+
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 }
+  ]), 'update', 200n);
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.3 }
+  ]), 'state', 201n, { interestId: interest.id });
+
+  assert.equal(object.snapshot.latitude, 41.3);
+  assert.equal(object.timestampNs, 201n);
+  assert.equal(object.getPropertyTimestamp('latitude'), 201n);
+  assert.deepEqual(changes.map(change => [change.source, change.timestampNs]), [
+    ['update', 200n],
+    ['state', 201n]
+  ]);
 });
 
 test('pending remote object state keeps its SEN timestamp until the type is known', () => {

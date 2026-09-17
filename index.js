@@ -40,6 +40,8 @@
  * @property {number} [timeout=3000] Discovery and operation timeout in ms.
  * @property {number} [discoverySettleMs=100] Discovery settle time after the first process is found.
  * @property {number} [targetDiscoverySettleMs=1000] Target collection window for root multi-session discovery.
+ * @property {boolean} [progressiveDiscovery=true] Root connect resolves when discovery is operational, without waiting for producers. False enables legacy snapshot discovery.
+ * @property {number} [sessionDiscoveryTimeoutMs=0] Progressive session discovery deadline; 0 waits until the session appears or the client closes. Separate from transport operation timeout.
  * @property {number} [busDiscoverySettleMs] Max wait after lightweight session connect before reading bus announcements. Defaults to at least 1000 ms.
  * @property {number} [participantReadyTimeoutMs=1000] Short grace timeout for non-fatal bus participant acknowledgements.
  * @property {boolean} [reconnect=true] Reconnect and restart interests after disconnection.
