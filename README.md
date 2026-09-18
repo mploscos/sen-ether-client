@@ -33,6 +33,30 @@ npm install sen-ether-client
 SEN kernel protocol **9** and Ether protocol **2** are supported and checked
 during the handshake.
 
+### SEN type model
+
+The transport-independent type catalog and resolver are available from the
+browser-safe `sen-ether-client/types` entry point. This entry point does not
+load Ether sockets or discovery code.
+
+```js
+import { SenTypeCatalog, SenTypeResolver } from 'sen-ether-client/types';
+
+const catalog = new SenTypeCatalog(typeDefinitions);
+const types = new SenTypeResolver(catalog);
+const definition = types.resolveValueDefinition({ type: 'demo.Position' });
+```
+
+`resolveValueDefinition()` and `resolveTypeDefinition(name, { unique: true })`
+accept a short name only when it identifies one definition. Qualified names
+should be used when independent packages declare the same short name.
+
+The same entry point also exposes transport-neutral helpers for applications:
+`DescribeSenPrimitive`, `DescribeSenQuantity`, `NormalizeSenUnit`,
+`FormatSenUnit`, `ResolveSenPresentValueDefinition`, `ResolveSenValueSpec` and
+`WalkSenValue`. UI-specific editor metadata intentionally lives in `@dep/sen`
+rather than in this Ether client.
+
 ## Consume SEN objects
 
 ```js
