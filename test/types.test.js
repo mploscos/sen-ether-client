@@ -5,6 +5,7 @@ import {
   DescribeSenQuantity,
   FormatSenUnit,
   GetSenTypeKind,
+  NormalizeSenUnit,
   ResolveSenPresentValueDefinition,
   ResolveSenValueSpec,
   SenTypeCatalog,
@@ -99,10 +100,17 @@ test('describes quantities without losing canonical unit identity', () => {
   assert.deepEqual(descriptor?.unit, {
     name: 'meters_per_second', abbreviation: 'm_per_s', category: 'velocity', label: 'm/s'
   });
+  assert.deepEqual(NormalizeSenUnit({ name: 'megapascals', abbreviation: 'Mpa', category: 'pressure' }), {
+    name: 'megapascals', abbreviation: 'Mpa', category: 'pressure', label: 'MPa'
+  });
   assert.equal(descriptor?.integer, true);
   for (const [input, expected] of [
-    ['m_per_s_sq', 'm/s²'], ['deg_per_s', '°/s'], ['degC', '°C'],
-    ['khz', 'kHz'], ['kg_per_m3', 'kg/m³'], ['custom', 'custom']
+    ['us', 'µs'], ['um', 'µm'], ['hz', 'Hz'], ['khz', 'kHz'], ['Mhz', 'MHz'],
+    ['pa', 'Pa'], ['kpa', 'kPa'], ['Mpa', 'MPa'], ['nw', 'N'], ['knw', 'kN'],
+    ['m_per_s', 'm/s'], ['km_per_s', 'km/s'], ['m_per_s_sq', 'm/s²'],
+    ['rad_per_s', 'rad/s'], ['deg_per_s', '°/s'], ['g_per_cm3', 'g/cm³'],
+    ['kg_per_m3', 'kg/m³'], ['m_sq', 'm²'], ['km_sq', 'km²'], ['Nm', 'N·m'],
+    ['degC', '°C'], ['degF', '°F'], ['kph', 'km/h'], ['custom', 'custom']
   ]) assert.equal(FormatSenUnit(input), expected);
 });
 

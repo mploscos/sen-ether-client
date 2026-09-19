@@ -113,6 +113,44 @@ test('resolver rejects an unknown quantity unit like the official UnitRegistry',
   );
 });
 
+test('resolver mirrors SEN basic SI prefixes and additional quantity units', () => {
+  const expected = [
+    ['m', 'meter', 'length'], ['mm', 'millimeter', 'length'], ['um', 'micrometer', 'length'], ['km', 'kilometer', 'length'],
+    ['s', 'second', 'time'], ['ns', 'nanosecond', 'time'], ['us', 'microsecond', 'time'], ['ms', 'millisecond', 'time'],
+    ['g', 'gram', 'mass'], ['kg', 'kilogram', 'mass'],
+    ['pa', 'pascals', 'pressure'], ['kpa', 'kilopascals', 'pressure'], ['Mpa', 'megapascals', 'pressure'],
+    ['nw', 'newton', 'force'], ['knw', 'kilonewton', 'force'],
+    ['rad', 'radian', 'angle'], ['mrad', 'milliradian', 'angle'],
+    ['hz', 'hertz', 'frequency'], ['m_per_s', 'meters_per_second', 'velocity'],
+    ['kph', 'km_per_hour', 'velocity'], ['mph', 'miles_per_hour', 'velocity'], ['kn', 'knot', 'velocity'],
+    ['deg', 'degree', 'angle'], ['degC', 'centigrade', 'temperature'], ['degF', 'fahrenheit', 'temperature'],
+    ['rpm', 'revolutions_per_min', 'angularVelocity'], ['Nm', 'newton_meter', 'torque'],
+    ['m_sq', 'square_meter', 'area'], ['g_per_cm3', 'grams_per_centimeters_cube', 'density'],
+    ['kg_per_m3', 'kilograms_per_meters_cube', 'density']
+  ];
+  const declarations = expected.map(([abbreviation], index) => `quantity<f32, ${abbreviation}> Q${index};`).join('\n');
+  const types = resolveStl('units.stl', { sources: { 'units.stl': `package units;\n${declarations}` } }).toTypeSpecs();
+
+  for (const [index, [abbreviation, name, category]] of expected.entries()) {
+    assert.deepEqual(types.get(`units.Q${index}`).data.value.unit, { name, abbreviation, category });
+  }
+});
+
+test('resolver accepts representative prefixed SEN units in one STL file', () => {
+  const types = resolveStl('prefixed.stl', { sources: { 'prefixed.stl': `
+    package units;
+    quantity<f32, mm> Distance;
+    quantity<f32, ns> Latency;
+    quantity<f32, Mpa> Pressure;
+    quantity<f32, knw> Force;
+  ` } }).toTypeSpecs();
+
+  assert.equal(types.get('units.Distance').data.value.unit.abbreviation, 'mm');
+  assert.equal(types.get('units.Latency').data.value.unit.abbreviation, 'ns');
+  assert.equal(types.get('units.Pressure').data.value.unit.abbreviation, 'Mpa');
+  assert.equal(types.get('units.Force').data.value.unit.abbreviation, 'knw');
+});
+
 test('resolver rejects non-struct inheritance and unsupported implements clauses', () => {
   assert.throws(
     () => resolveStl('input.stl', { sources: { 'input.stl': 'package test; enum Kind: u8 { value } struct Invalid: Kind {}' } }),
