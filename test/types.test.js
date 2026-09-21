@@ -8,12 +8,24 @@ import {
   NormalizeSenUnit,
   ResolveSenPresentValueDefinition,
   ResolveSenValueSpec,
+  SenUnits,
   SenTypeCatalog,
   SenTypeResolver,
   WalkSenValue
 } from '../lib/types/index.js';
 
 const spec = (type, value, extra = {}) => ({ ...extra, data: { type, value } });
+
+test('exposes the complete standard SEN unit registry', () => {
+  const units = SenUnits();
+  assert.equal(units.length, 179);
+  assert.deepEqual(units.find(unit => unit.abbreviation === 'm_per_s_sq'), {
+    name: 'meters_per_second_squared',
+    abbreviation: 'm_per_s_sq',
+    category: 'acceleration',
+    label: 'm/s²'
+  });
+});
 
 test('normalizes numeric, TypeSpec and resolved STL kinds', () => {
   assert.equal(GetSenTypeKind(spec(3, {})), 'struct');
@@ -108,8 +120,9 @@ test('describes quantities without losing canonical unit identity', () => {
     ['us', 'µs'], ['um', 'µm'], ['hz', 'Hz'], ['khz', 'kHz'], ['Mhz', 'MHz'],
     ['pa', 'Pa'], ['kpa', 'kPa'], ['Mpa', 'MPa'], ['nw', 'N'], ['knw', 'kN'],
     ['m_per_s', 'm/s'], ['km_per_s', 'km/s'], ['m_per_s_sq', 'm/s²'],
-    ['rad_per_s', 'rad/s'], ['deg_per_s', '°/s'], ['g_per_cm3', 'g/cm³'],
-    ['kg_per_m3', 'kg/m³'], ['m_sq', 'm²'], ['km_sq', 'km²'], ['Nm', 'N·m'],
+    ['rad_per_s', 'rad/s'], ['deg_per_s', 'deg/s'], ['arcmin', 'arcmin'], ['arcsec', 'arcsec'],
+    ['g_per_cm3', 'g/cm³'],
+    ['kg_per_m3', 'kg/m³'], ['m_sq', 'm²'], ['km_sq', 'km²'], ['Nm', 'Nm'],
     ['degC', '°C'], ['degF', '°F'], ['kph', 'km/h'], ['custom', 'custom']
   ]) assert.equal(FormatSenUnit(input), expected);
 });

@@ -61,6 +61,13 @@ export function NormalizeSenUnit(unit: any): {
   label: string;
 };
 export function FormatSenUnit(value: any): string;
+export type SenUnitDescriptor = {
+  name: string;
+  abbreviation: string;
+  category: string;
+  label: string;
+};
+export function SenUnits(): SenUnitDescriptor[];
 export function DescribeSenPrimitive(spec: any): {
   name: string;
   normalized: string;
