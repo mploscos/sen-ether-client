@@ -1528,7 +1528,6 @@ test('published objects emit typed and inherited events to consumers', async t =
     port: 49500 + (process.pid % 500), busMulticastPort: 54000 + (process.pid % 1000), beamPeriodMs: 100
   };
   const types = (await Sen.loadStl(new URL('./fixtures/events.stl', import.meta.url).pathname)).toTypeSpecs();
-  types.delete('demo.Unknown');
   const producer = await Sen.connect({ ...options, appName: 'event-producer', types });
   const consumer = await Sen.connect({ ...options, appName: 'event-consumer' });
 
@@ -1589,7 +1588,7 @@ test('published objects emit typed and inherited events to consumers', async t =
     await assert.rejects(published.emit('missing'), /SEN event not found: demo\.TemperatureSensor\.missing/);
     await assert.rejects(published.emit('moved', ['b1']), /expects 2 argument\(s\), got 1/);
     await assert.rejects(published.emit('sampled', ['invalid']), /expects an object value/);
-    await assert.rejects(published.emit('unknownPayload', [{}]), /unknown SEN value type: demo\.Unknown/);
+    await assert.rejects(published.emit('unknownPayload', ['invalid']), /expects an object value/);
     await published.remove();
     await assert.rejects(published.emit('activated'), /SEN published object not found/);
   } finally {
@@ -2156,10 +2155,12 @@ test('published objects are restored once after local session reconnect', async 
       }
     });
     const previousClient = producer.client;
+    const previousObjectId = handle.id;
     const reconnected = once(producer, 'reconnect');
     previousClient.emit('close', true);
     await reconnected;
     assert.notEqual(producer.client, previousClient);
+    assert.equal(handle.id, previousObjectId);
 
     const consumer = await Sen.connect({ ...options, reconnect: false, appName: 'reconnect-consumer' });
     try {
@@ -2168,6 +2169,7 @@ test('published objects are restored once after local session reconnect', async 
       const interest = await consumer.interest(`SELECT * FROM ${session}.devices`, { forceBus: true });
       const [counter] = await waitForObjectNames(interest, ['counter']);
       assert.equal(interest.objects().length, 1);
+      assert.equal(counter.id, previousObjectId);
       assert.equal(Number(counter.snapshot.count), 1);
 
       await handle.update({ count: 3 });

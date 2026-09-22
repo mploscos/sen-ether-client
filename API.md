@@ -273,8 +273,11 @@ JavaScript publishers filter each remote interest by its selected class (includi
 registered base classes) and `WHERE` expression. Conditions read published
 properties, including nested fields. As in native SEN, `name` identifies the
 object at application level. The numeric protocol `ObjectId` is internal and is
-unrelated to a property named `id` declared in STL. Updating properties adds or
-removes objects from matching interests automatically.
+unrelated to a property named `id` declared in STL. Unless explicitly supplied,
+it is generated like native SEN by combining a random UUID hash with the object
+name. The published `typeHash` is SEN's structural `Type::getHash()` value for
+the resolved STL class. Updating properties adds or removes objects from
+matching interests automatically.
 
 Supported conditions use quoted strings, numbers, booleans, comparisons
 (`=`, `==`, `!=`, `<>`, `<`, `<=`, `>`, `>=`), arithmetic, parentheses,

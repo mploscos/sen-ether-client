@@ -9,7 +9,8 @@ import { pathToFileURL } from 'node:url';
 import { decodeKernelControlMessage, encodeKernelControlMessage } from '../lib/bus.js';
 import { EtherClient } from '../lib/client.js';
 import { crc32 } from '../lib/crc32.js';
-import { Sen } from '../index.js';
+import { makeObjectId } from '../lib/object-id.js';
+import { Sen, senTypeHashes } from '../index.js';
 import { parseStl, resolveStl, StlResolutionError, StlSyntaxError, tokenizeStl } from '../lib/stl.js';
 import { generateStlModule } from '../lib/stl-module.js';
 
@@ -182,6 +183,30 @@ test('every adapted TypeSpec is accepted by the existing SEN binary codec', () =
   assert.equal(classSpec.data.type, 'ClassTypeSpec');
   assert.equal(classSpec.data.value.methods[0].name, 'methodWithArguments');
   assert.equal(classSpec.data.value.events[0].name, 'eventWithArguments');
+});
+
+test('structural hashes match SEN C++ Type::getHash() for every STL type family', () => {
+  const source = fs.readFileSync(new URL('./fixtures/official-complex.stl', import.meta.url), 'utf8');
+  const registry = resolveStl('official-complex.stl', { sources: { 'official-complex.stl': source } });
+  assert.deepEqual(Object.fromEntries(senTypeHashes(registry)), {
+    'stl_resolver_test.ValidSequence': 2803888902,
+    'stl_resolver_test.ValidBoundedSequence': 2418126426,
+    'stl_resolver_test.ValidArray': 703988013,
+    'stl_resolver_test.ValidEnumerationType': 4248322767,
+    'stl_resolver_test.ValidStructType': 3910372490,
+    'stl_resolver_test.ValidOptional': 60167031,
+    'stl_resolver_test.ValidVariantType': 2034995839,
+    'stl_resolver_test.ValidQuantity': 2190074809,
+    'stl_resolver_test.ValidTypeAlias': 1318325609,
+    'stl_resolver_test.ValidParentClass': 3302805198,
+    'stl_resolver_test.ValidClass': 3121494781
+  });
+});
+
+test('default ObjectIds use SEN random UUID hash semantics instead of CRC32(name)', () => {
+  const ids = new Set(Array.from({ length: 32 }, () => makeObjectId('same-name')));
+  assert.equal(ids.size, 32);
+  assert.ok([...ids].every(id => Number.isInteger(id) && id >= 0 && id <= 0xffffffff));
 });
 
 test('Sen.loadStl resolves a directory once, including relative imports', async () => {

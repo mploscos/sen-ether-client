@@ -1,6 +1,6 @@
 {
   "name": "sen-ether-client",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Pure JavaScript SEN Ether client for consuming and publishing SEN objects from Node.js",
   "senCompatibility": {
     "kernelProtocolVersion": 9,

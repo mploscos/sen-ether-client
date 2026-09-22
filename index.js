@@ -88,8 +88,8 @@
  * @typedef {object} SenPublishedObjectDescriptor
  * @property {string} name SEN object name.
  * @property {string} className SEN class name.
- * @property {number} [id] Advanced protocol ObjectId override. Normally omit it and identify the object by name. This is unrelated to an STL property named `id`.
- * @property {number} [typeHash] Optional class hash. Defaults to CRC32(className).
+ * @property {number} [id] Advanced protocol ObjectId override. By default a SEN-compatible random UUID hash is combined with the object name. This is unrelated to an STL property named `id`.
+ * @property {number} [typeHash] Optional class hash. Defaults to the SEN structural hash of the resolved ClassTypeSpec.
  * @property {object} [properties] Current object property values.
  * @property {object} [snapshot] Alias for properties.
  * @property {object} [methods] JavaScript handlers for methods declared in the class.
@@ -140,3 +140,4 @@ export {
 export { generateStlModule } from './lib/stl-module.js';
 export { parseFom, resolveFom, FomResolutionError } from './lib/fom.js';
 export { parseXml, XmlSyntaxError } from './lib/xml.js';
+export { senTypeHash, senTypeHashes } from './lib/type-hash.js';
