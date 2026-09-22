@@ -421,6 +421,68 @@ test('Sen bus is an alias for subscribe', async () => {
   });
 });
 
+test('concurrent remote bus waits share central state without EventEmitter listeners', async () => {
+  const sen = await Sen.connect({
+    session: 'waiter-test',
+    localSession: true,
+    listen: false,
+    reconnect: false
+  });
+  const externalListener = () => {};
+  sen.on('busAvailable', externalListener);
+
+  try {
+    const waits = Array.from({ length: 32 }, () => sen.waitForRemoteBus('delayed', 1000));
+    assert.equal(sen.listenerCount('busAvailable'), 1);
+    assert.equal(sen.remoteBusWaiters.get('delayed').size, 32);
+
+    sen.client.emit('busJoined', { busName: 'delayed' });
+    await Promise.all(waits);
+
+    assert.equal(sen.listenerCount('busAvailable'), 1);
+    assert.equal(sen.remoteBusWaiters.size, 0);
+  } finally {
+    sen.off('busAvailable', externalListener);
+    await sen.close();
+  }
+});
+
+test('timed out remote bus waits remove their pending state', async () => {
+  const sen = new Sen();
+  const waits = Array.from({ length: 24 }, () => sen.waitForRemoteBus('missing', 10));
+
+  assert.equal(sen.listenerCount('busAvailable'), 0);
+  assert.equal(sen.remoteBusWaiters.get('missing').size, 24);
+
+  const results = await Promise.allSettled(waits);
+  assert.ok(results.every(result => result.status === 'rejected'));
+  assert.ok(results.every(result => /did not announce bus "missing"/.test(result.reason.message)));
+  assert.equal(sen.remoteBusWaiters.size, 0);
+  assert.equal(sen.listenerCount('busAvailable'), 0);
+});
+
+test('closing Sen rejects and clears all pending remote bus waits', async () => {
+  const sen = new Sen();
+  const waits = [
+    sen.waitForRemoteBus('first', 60_000),
+    sen.waitForRemoteBus('first', 60_000),
+    sen.waitForRemoteBus('second', 60_000)
+  ];
+  const settled = Promise.allSettled(waits);
+
+  await sen.close();
+  const results = await settled;
+
+  assert.ok(results.every(result => result.status === 'rejected'));
+  assert.ok(results.every(result => result.reason.code === 'SEN_CLIENT_CLOSED'));
+  assert.equal(sen.remoteBusWaiters.size, 0);
+  assert.equal(sen.listenerCount('busAvailable'), 0);
+  await assert.rejects(
+    sen.waitForRemoteBus('third', 60_000),
+    error => error.code === 'SEN_CLIENT_CLOSED'
+  );
+});
+
 test('SenRemoteObject matches by id, name, class and predicate', () => {
   const object = new SenRemoteObject({}, {
     id: 42,
