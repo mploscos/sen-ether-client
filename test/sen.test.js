@@ -447,6 +447,41 @@ test('concurrent remote bus waits share central state without EventEmitter liste
   }
 });
 
+test('concurrent interests across buses use one participant-ready listener', async () => {
+  const sen = await Sen.connect({
+    session: 'waiter-test',
+    localSession: true,
+    listen: false,
+    reconnect: false
+  });
+  let nextBusId = 1;
+  sen.client.joinBus = async busName => {
+    const busId = nextBusId++;
+    queueMicrotask(() => sen.client.emit('busParticipantReady', { busName, busId }));
+    return { busName, busId, participantId: 1 };
+  };
+  sen.client.startInterest = (busName, query, options) => ({
+    busName,
+    query,
+    id: options.id ?? crc32(query)
+  });
+
+  try {
+    const interests = Array.from({ length: 15 }, (_, index) => {
+      const busName = `bus-${index}`;
+      return sen.interest(`SELECT * FROM waiter-test.${busName}`, { forceBus: true });
+    });
+
+    assert.equal(sen.client.listenerCount('busParticipantReady'), 1);
+    assert.equal(sen.busParticipantReadyWaiters.size, 15);
+    await Promise.all(interests);
+    assert.equal(sen.client.listenerCount('busParticipantReady'), 1);
+    assert.equal(sen.busParticipantReadyWaiters.size, 0);
+  } finally {
+    await sen.close();
+  }
+});
+
 test('timed out remote bus waits remove their pending state', async () => {
   const sen = new Sen();
   const waits = Array.from({ length: 24 }, () => sen.waitForRemoteBus('missing', 10));
@@ -461,7 +496,7 @@ test('timed out remote bus waits remove their pending state', async () => {
   assert.equal(sen.listenerCount('busAvailable'), 0);
 });
 
-test('closing Sen rejects and clears all pending remote bus waits', async () => {
+test('closing Sen rejects and clears all pending bus waits', async () => {
   const sen = new Sen();
   const waits = [
     sen.waitForRemoteBus('first', 60_000),
@@ -469,16 +504,29 @@ test('closing Sen rejects and clears all pending remote bus waits', async () => 
     sen.waitForRemoteBus('second', 60_000)
   ];
   const settled = Promise.allSettled(waits);
+  const participantReady = [
+    sen.createBusParticipantReadyWait('first', 60_000),
+    sen.createBusParticipantReadyWait('second', 60_000)
+  ];
+  const participantReadySettled = Promise.allSettled(participantReady.map(wait => wait.promise));
 
   await sen.close();
   const results = await settled;
+  const participantReadyResults = await participantReadySettled;
 
   assert.ok(results.every(result => result.status === 'rejected'));
   assert.ok(results.every(result => result.reason.code === 'SEN_CLIENT_CLOSED'));
+  assert.ok(participantReadyResults.every(result => result.status === 'rejected'));
+  assert.ok(participantReadyResults.every(result => result.reason.code === 'SEN_CLIENT_CLOSED'));
   assert.equal(sen.remoteBusWaiters.size, 0);
+  assert.equal(sen.busParticipantReadyWaiters.size, 0);
   assert.equal(sen.listenerCount('busAvailable'), 0);
   await assert.rejects(
     sen.waitForRemoteBus('third', 60_000),
+    error => error.code === 'SEN_CLIENT_CLOSED'
+  );
+  assert.throws(
+    () => sen.createBusParticipantReadyWait('third', 60_000),
     error => error.code === 'SEN_CLIENT_CLOSED'
   );
 });
