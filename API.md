@@ -474,8 +474,10 @@ Main properties:
 - `name`
 - `className`
 - `snapshot`
-- `timestampNs`: latest SEN source timestamp as a nanosecond `BigInt`
-- `propertyTimestamps`: `Map<string, bigint>` with the latest known timestamp per property
+- `timestampNs`: latest SEN source timestamp that changed at least one decoded property, as a nanosecond `BigInt`
+- `lastObservedTimestampNs`: latest SEN state or update timestamp observed, including an identical state resynchronization
+- `propertyTimestamps`: `Map<string, bigint>` with the latest change timestamp per property
+- `propertyObservedTimestamps`: `Map<string, bigint>` with the latest observed timestamp per property
 
 Main methods:
 
@@ -483,6 +485,7 @@ Main methods:
 - `await object.waitForType(options)`
 - `await object.get(property)`
 - `object.getPropertyTimestamp(property)`
+- `object.getPropertyObservedTimestamp(property)`
 - `await object.set(property, value)`
 - `await object.call(method, args)`
 
@@ -494,6 +497,11 @@ Main events:
 - the declared SEN runtime event name, with `{ object, id, name, args,
   creationTimeNs, raw }`
 - `stale`
+
+State resynchronization refreshes `lastObservedTimestampNs`, but it does not
+emit `change` or advance property timestamps when the decoded value is
+semantically identical. Equality includes structs, sequences, variants and
+buffers, not only primitive JavaScript values.
 
 `change.timestampNs` is a nanosecond `BigInt`. This keeps SEN's original
 64-bit timestamp precision. Convert it explicitly at JSON boundaries:

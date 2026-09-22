@@ -77,11 +77,11 @@ async function waitForObjectNames(interest, names, timeoutMs = 3000) {
   throw new Error(`timeout waiting for SEN objects [${expected.join(', ')}]; got [${interest.objects().map(object => object.name).sort().join(', ')}]`);
 }
 
-function propertyUpdateBuffer(updates) {
+function propertyUpdateBuffer(updates, typeRegistry) {
   const writer = new SenBinaryWriter();
   for (const update of updates) {
     writer.writeUInt32(propertyHash(update.name));
-    const value = encodeValue(update.value, update.type);
+    const value = encodeValue(update.value, update.type, typeRegistry);
     writer.writeUInt32(value.length);
     writer.chunks.push(value);
   }
@@ -1935,6 +1935,89 @@ test('state resync does not re-emit duplicate or stale property values', () => {
   ]);
 });
 
+test('newer state resync observes identical values without emitting changes', () => {
+  const { interest, object } = makeTypedObject();
+  const changes = [];
+  interest.on('change', change => changes.push(change));
+
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 }
+  ]), 'update', 200n);
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 }
+  ]), 'state', 201n, { interestId: interest.id });
+
+  assert.equal(object.snapshot.latitude, 41.2);
+  assert.equal(object.timestampNs, 200n);
+  assert.equal(object.lastObservedTimestampNs, 201n);
+  assert.equal(object.lastStateTimestampNs, 201n);
+  assert.equal(object.getPropertyTimestamp('latitude'), 200n);
+  assert.equal(object.getPropertyObservedTimestamp('latitude'), 201n);
+  assert.deepEqual(changes.map(change => [change.source, change.timestampNs]), [
+    ['update', 200n]
+  ]);
+});
+
+test('identical newer state prevents a delayed update from regressing the property', () => {
+  const { interest, object } = makeTypedObject();
+  const changes = [];
+  interest.on('change', change => changes.push(change));
+
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 }
+  ]), 'update', 200n);
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 }
+  ]), 'state', 300n, { interestId: interest.id });
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 40.0 }
+  ]), 'update', 250n);
+
+  assert.equal(object.snapshot.latitude, 41.2);
+  assert.equal(object.getPropertyTimestamp('latitude'), 200n);
+  assert.equal(object.getPropertyObservedTimestamp('latitude'), 300n);
+  assert.equal(changes.length, 1);
+});
+
+test('newer state resync compares decoded buffers and structs by value', () => {
+  const { bus, interest, object } = makeTypedObject();
+  const metadataSpec = {
+    qualifiedName: 'test.Metadata',
+    data: {
+      type: 'StructTypeSpec',
+      value: {
+        fields: [
+          { name: 'label', type: 'string' },
+          { name: 'revision', type: 'u32' }
+        ]
+      }
+    }
+  };
+  bus.typeRegistry.set(metadataSpec.qualifiedName, metadataSpec);
+  object.spec.data.value.properties.push(
+    { id: propertyHash('payload'), name: 'payload', type: 'Buffer', category: 'dynamicRO' },
+    { id: propertyHash('metadata'), name: 'metadata', type: 'test.Metadata', category: 'dynamicRO' }
+  );
+  const state = () => propertyUpdateBuffer([
+    { name: 'payload', type: 'Buffer', value: Buffer.from([1, 2, 3]) },
+    { name: 'metadata', type: 'test.Metadata', value: { label: 'same', revision: 2 } }
+  ], bus.typeRegistry);
+  const changes = [];
+  interest.on('change', change => changes.push(change));
+
+  object.applyState(state(), 'state', 300n, { interestId: interest.id });
+  object.applyState(state(), 'state', 301n, { interestId: interest.id });
+
+  assert.equal(changes.length, 2);
+  assert.deepEqual(changes.map(change => change.name), ['payload', 'metadata']);
+  assert.equal(object.timestampNs, 300n);
+  assert.equal(object.lastObservedTimestampNs, 301n);
+  assert.equal(object.getPropertyTimestamp('payload'), 300n);
+  assert.equal(object.getPropertyTimestamp('metadata'), 300n);
+  assert.equal(object.getPropertyObservedTimestamp('payload'), 301n);
+  assert.equal(object.getPropertyObservedTimestamp('metadata'), 301n);
+});
+
 test('state resync still emits and applies a genuinely newer property value', () => {
   const { interest, object } = makeTypedObject();
   const changes = [];
@@ -1956,7 +2039,7 @@ test('state resync still emits and applies a genuinely newer property value', ()
   ]);
 });
 
-test('pending remote object state keeps its SEN timestamp until the type is known', () => {
+test('pending remote object state keeps its observation timestamp until the type is known', () => {
   const { interest, object } = makeTypedObject();
   const spec = object.spec;
   const changes = [];
@@ -1967,7 +2050,8 @@ test('pending remote object state keeps its SEN timestamp until the type is know
     { name: 'altitude', type: 'f64', value: 3200 }
   ]), 'state', 98765n);
 
-  assert.equal(object.timestampNs, 98765n);
+  assert.equal(object.timestampNs, undefined);
+  assert.equal(object.lastObservedTimestampNs, 98765n);
   assert.equal(object.lastStateTimestampNs, 98765n);
   assert.equal(changes.length, 0);
 
@@ -1979,6 +2063,8 @@ test('pending remote object state keeps its SEN timestamp until the type is know
   );
 
   assert.equal(object.snapshot.altitude, 3200);
+  assert.equal(object.timestampNs, 98765n);
+  assert.equal(object.lastObservedTimestampNs, 98765n);
   assert.equal(object.getPropertyTimestamp('altitude'), 98765n);
   assert.equal(changes.length, 1);
   assert.equal(changes[0].timestampNs, 98765n);
