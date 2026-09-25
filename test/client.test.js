@@ -20,6 +20,10 @@ async function createDiscoveryHub() {
   const sockets = new Set();
   const server = net.createServer(socket => {
     sockets.add(socket);
+    // CLI subprocesses may close their hub connection with an RST while
+    // exiting. That is a normal peer shutdown for this in-process relay and
+    // must not become an uncaught exception in the test process.
+    socket.on('error', () => sockets.delete(socket));
     socket.on('data', chunk => {
       for (const other of sockets) {
         if (other !== socket && !other.destroyed) {

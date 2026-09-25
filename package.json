@@ -1,6 +1,6 @@
 {
   "name": "sen-ether-client",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "Pure JavaScript SEN Ether client for consuming and publishing SEN objects from Node.js",
   "senCompatibility": {
     "kernelProtocolVersion": 9,
@@ -54,7 +54,7 @@
   },
   "scripts": {
     "generate:protocol": "node ./scripts/generate-protocol.mjs",
-    "test": "node --test --test-concurrency=1 --test-reporter spec ./test/protocol.test.js ./test/codec.test.js ./test/discovery.test.js ./test/live-discovery.test.js ./test/client.test.js ./test/sen.test.js ./test/stl.test.js ./test/types.test.js",
+    "test": "node --test --test-concurrency=1 --test-reporter spec ./test/protocol.test.js ./test/codec.test.js ./test/discovery.test.js ./test/live-discovery.test.js ./test/client.test.js ./test/routing.test.js ./test/sen.test.js ./test/stl.test.js ./test/types.test.js",
     "test:integration": "node --test ./test/integration-*.test.js"
   }
 }

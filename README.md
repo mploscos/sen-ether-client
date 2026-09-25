@@ -231,6 +231,11 @@ Check these first:
 4. Confirm the publisher uses the same STL revision as the consumer.
 5. Use a TCP discovery hub if multicast is unavailable between hosts.
 
+For a protocol-routing trace, start the application with
+`SEN_TRACE_ROUTING=1`. The client writes one compact JSON record per routing
+decision to stderr; object values and application payloads are not included.
+This option is intended for temporary diagnostics.
+
 ## Compatibility
 
 | sen-ether-client | Node.js | SEN kernel | Ether |
