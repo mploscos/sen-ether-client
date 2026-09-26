@@ -227,6 +227,9 @@ Generate a typed JavaScript helper module for an STL tree with:
 npx sen-stl-types ./stl --output ./stl.mjs
 ```
 
+Generated enums are immutable bidirectional maps. For an STL enum containing
+`active` at key `2`, both `EnumName.active` and `EnumName[2]` are available.
+
 ### Load HLA FOM XML
 
 ```js

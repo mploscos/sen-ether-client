@@ -218,8 +218,17 @@ npx sen-stl-types ./stl --output ./stl.mjs
 ```
 
 The generated module provides `publish<Class>()` and `waitFor<Class>()`
-helpers with JSDoc typing. The [`examples/`](./examples) directory includes a
-consumer, publisher, methods, events and a generated STL module.
+helpers with JSDoc typing. Generated enums support named and numeric lookups:
+
+```js
+import { TaskStatus } from './stl.mjs';
+
+TaskStatus.active; // 2
+TaskStatus[2]; // 'active'
+```
+
+The [`examples/`](./examples) directory includes a consumer, publisher,
+methods, events and a generated STL module.
 
 ## If an object does not appear
 

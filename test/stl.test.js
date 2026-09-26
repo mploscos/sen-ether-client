@@ -349,7 +349,7 @@ test('EtherClient selects the STL ClassTypeSpec when publishing without spec', (
   }, { types }), /was not found in the configured STL types/);
 });
 
-test('STL module generator emits self-contained JSDoc and typed class helpers', () => {
+test('STL module generator emits self-contained JSDoc and typed class helpers', async () => {
   const module = generateStlModule(resolveStl('complex.stl', { sources: { 'complex.stl': COMPLEX_STL } }));
   assert.match(module, /@typedef .*ValidClassProperties/s);
   assert.match(module, /@callback ValidClassMethodWithArgumentsMethod/);
@@ -359,6 +359,28 @@ test('STL module generator emits self-contained JSDoc and typed class helpers', 
   assert.match(module, /export async function publishValidClass/);
   assert.match(module, /export async function waitForValidClass/);
   assert.doesNotMatch(module, /^ \*\s+(?:readonly )?id\??:/m);
+  assert.match(module, /Record<number, string>/);
+  assert.match(module, /Extract<\(typeof ValidEnumerationType\)\[keyof typeof ValidEnumerationType\], number>/);
+
+  const generated = await import(`data:text/javascript,${encodeURIComponent(module)}`);
+  assert.equal(generated.ValidEnumerationType.value2, 1);
+  assert.equal(generated.ValidEnumerationType[1], 'value2');
+});
+
+test('STL module generator preserves explicit enum keys', () => {
+  const module = generateStlModule(new Map([['demo.Mode', {
+    kind: 'EnumType',
+    name: 'Mode',
+    qualifiedName: 'demo.Mode',
+    description: '',
+    values: [{ name: 'invalid', key: -1 }, { name: 'off', key: 10 }, { name: 'on', key: 42 }]
+  }]]));
+  assert.match(module, /"-1": "invalid"/);
+  assert.match(module, /invalid: -1/);
+  assert.match(module, /"10": "off"/);
+  assert.match(module, /off: 10/);
+  assert.match(module, /"42": "on"/);
+  assert.match(module, /on: 42/);
 });
 
 test('syntax errors carry a source location', () => {
