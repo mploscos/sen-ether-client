@@ -1,0 +1,37 @@
+export declare const KERNEL_PROTOCOL_VERSION = 9;
+export declare const ETHER_PROTOCOL_VERSION = 2;
+export declare const ETHER_CONTROL_MESSAGE: readonly string[];
+export declare const ETHER_CONTROL_MESSAGE_KEY: Readonly<{
+    Hello: 0;
+    Ready: 1;
+    BusJoined: 2;
+    BusLeft: 3;
+}>;
+export declare const KERNEL_CONTROL_MESSAGE: readonly string[];
+export declare const KERNEL_CONTROL_MESSAGE_KEY: Readonly<{
+    RemoteParticipantReady: 0;
+    InterestStarted: 1;
+    InterestStopped: 2;
+    ObjectsPublished: 3;
+    ObjectsRemoved: 4;
+    PublicationRejection: 5;
+    ObjectsStateRequest: 6;
+    ObjectsStateResponse: 7;
+    TypesInfoRequest: 8;
+    TypesInfoResponse: 9;
+    TypesInfoRejection: 10;
+}>;
+export declare const TYPE_SPEC_RESPONSE: readonly string[];
+export declare const OS_KIND: readonly string[];
+export declare const CPU_ARCH: readonly string[];
+export declare const UNIT_CATEGORY: readonly string[];
+export declare const INTEGRAL_TYPE: readonly string[];
+export declare const REAL_TYPE: readonly string[];
+export declare const NUMERIC_TYPE: readonly string[];
+export declare const BASIC_TYPE: readonly string[];
+export declare const BUILT_IN_TYPE: readonly string[];
+export declare const TRANSPORT_MODE: readonly string[];
+export declare const METHOD_CONSTNESS: readonly string[];
+export declare const PROPERTY_RELATION: readonly string[];
+export declare const PROPERTY_CATEGORY: readonly string[];
+export declare const CUSTOM_TYPE_DATA: readonly string[];

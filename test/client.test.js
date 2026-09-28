@@ -195,8 +195,12 @@ test('EtherClient routes published objects between two JS participants', async t
     return;
   }
 
-  const publisher = new EtherClient({ sessionName: 'js', appName: 'publisher', busMulticast: false });
-  const consumer = new EtherClient({ sessionName: 'js', appName: 'consumer', busMulticast: false });
+  const publisher = new EtherClient({
+    sessionName: 'js', appName: 'publisher', busMulticast: false, multicastDiscovery: false
+  });
+  const consumer = new EtherClient({
+    sessionName: 'js', appName: 'consumer', busMulticast: false, multicastDiscovery: false
+  });
   try {
     await publisher.start({ listenHost: '127.0.0.1', listenPort: 0 });
     await consumer.start({ listenHost: '127.0.0.1', listenPort: 0 });
@@ -306,8 +310,12 @@ test('EtherClient keeps existing interests active when joining a second bus', as
     return;
   }
 
-  const publisher = new EtherClient({ sessionName: 'js', appName: 'publisher', busMulticast: false });
-  const consumer = new EtherClient({ sessionName: 'js', appName: 'consumer', busMulticast: false });
+  const publisher = new EtherClient({
+    sessionName: 'js', appName: 'publisher', busMulticast: false, multicastDiscovery: false
+  });
+  const consumer = new EtherClient({
+    sessionName: 'js', appName: 'consumer', busMulticast: false, multicastDiscovery: false
+  });
   const busNames = ['facpl.hmi', 'hmi.hud'];
 
   try {
@@ -438,7 +446,11 @@ test('sen-ether-probe lists announced buses without selecting a default bus', as
   }
 });
 
-test('EtherClient discovers JS peers through multicast discovery', async t => {
+test('EtherClient discovers JS peers through multicast discovery', {
+  skip: process.env.SEN_TEST_MULTICAST === '1'
+    ? false
+    : 'requires multicast networking; run npm run test:network'
+}, async t => {
   if (!await canListenTcp()) {
     t.skip('TCP listen is not permitted in this test environment');
     return;

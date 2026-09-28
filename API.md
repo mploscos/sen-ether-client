@@ -8,7 +8,7 @@ import { Sen, SenInterest, SenPublishedObject, SenRemoteObject } from 'sen-ether
 
 ## Compatibility
 
-`sen-ether-client@0.1.x` through `sen-ether-client@0.6.x` support:
+`sen-ether-client@0.8.x` supports:
 
 - kernel protocol `9`
 - ether protocol `2`
@@ -20,6 +20,9 @@ explicitly adds support for it.
 The protocol STL files are included in `resources/protocol` as the source for
 the codec. The SEN release noted in that folder is informational; it is not a
 compatibility check.
+
+Matching the numbers is necessary but is not a substitute for the real Sen
+matrix in [`docs/COMPATIBILITY.md`](./docs/COMPATIBILITY.md).
 
 The bundled protocol module is pre-generated. Application STL is parsed only
 when you explicitly call `Sen.loadStl()`; publishing and receiving updates use
@@ -105,6 +108,8 @@ Connection options:
 - `busMulticastPort`: native bus multicast port. Defaults to `50985`.
 - `types`: an STL registry from `Sen.loadStl()` or compatible TypeSpec
   collection used for decoding and publishing.
+- `resourceLimits`: optional overrides for bounded remote input and protocol
+  state. See [Resource limits](#resource-limits).
 
 `Sen.connect()` uses multicast discovery. `sen-ether-client` reads this SEN environment
 variable as its multicast default:
@@ -118,6 +123,48 @@ SEN producer on the same host sends discovery through a physical interface that
 does not loop multicast packets back locally, discovery can still return no
 processes; in that case run the producer discovery on `lo`, pass the matching
 `interfaceAddress`, or use SEN TCP discovery.
+
+### Resource limits
+
+Defaults are deliberately large enough for ordinary Sen state while preventing
+a remote peer from requesting unbounded allocation or bookkeeping:
+
+| Option | Default |
+| --- | ---: |
+| `maxFrameSize` | 16 MiB |
+| `maxReceiveBufferSize` | 16 MiB + 5-byte header |
+| `maxStringBytes` | 1 MiB |
+| `maxBufferBytes` | 16 MiB |
+| `maxSequenceLength` | 100,000 elements |
+| `maxDiscoveredProcesses` | 4,096 |
+| `maxConnections` | 128 |
+| `maxInterestsPerBus` | 4,096 |
+| `maxRemoteInterestsPerBus` | 4,096 |
+| `maxPendingRequestsPerBus` | 65,536 |
+| `maxForwardedObjectRoutesPerBus` | 100,000 |
+| `maxPendingTransitCallsPerBus` | 16,384 |
+| `maxRemoteParticipantsPerBus` | 4,096 |
+| `maxPendingStatesPerObject` | 64 |
+| `maxPendingMethodCallsPerBus` | 16,384 |
+
+All values must be positive safe integers. `maxReceiveBufferSize` must be at
+least `maxFrameSize + 5`. Exceeding a limit produces an error with code
+`SEN_RESOURCE_LIMIT`. For TCP input, the client emits a contextual `warning`
+and closes only the responsible connection.
+
+```js
+const sen = await Sen.connect({
+  resourceLimits: {
+    maxFrameSize: 64 * 1024 * 1024,
+    maxReceiveBufferSize: 64 * 1024 * 1024 + 5,
+    maxSequenceLength: 250_000
+  }
+});
+```
+
+Raise limits only after measuring a legitimate workload. Ether itself has no
+authentication or encryption; these limits are defensive resource controls,
+not an access-control mechanism.
 
 Preferred multi-session usage:
 

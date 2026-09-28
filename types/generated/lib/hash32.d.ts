@@ -1,0 +1,12 @@
+export declare const HASH_SEED = 23835769;
+export declare const PROPERTY_HASH_SEED = 19830715;
+export declare const METHOD_HASH_SEED = 93580253;
+export declare const EVENT_HASH_SEED = 12125807;
+export declare const FNV1A_OFFSET_BASIS = 2166136261;
+export declare const FNV1A_PRIME = 16777619;
+export declare const HASH_COMBINE_MAGIC = 2654435769;
+export declare function fnv1aString(value: any): number;
+export declare function hashCombine(seed: any, ...values: any[]): number;
+export declare function propertyHash(name: any): number;
+export declare function methodHash(name: any): number;
+export declare function eventHash(name: any): number;

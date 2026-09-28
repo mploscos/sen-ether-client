@@ -10,6 +10,31 @@ const beam = (name, appName = 'producer') => ({
   key: name, session: { name }, process: { appName }, lastSeen: Date.now(), beamPeriodMs: 50
 });
 
+async function createDiscoveryHub() {
+  const sockets = new Set();
+  const server = createServer(socket => {
+    sockets.add(socket);
+    socket.on('error', () => sockets.delete(socket));
+    socket.on('close', () => sockets.delete(socket));
+    socket.on('data', chunk => {
+      for (const peer of sockets) {
+        if (peer !== socket && !peer.destroyed) peer.write(chunk);
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  return {
+    address: `127.0.0.1:${server.address().port}`,
+    async close() {
+      for (const socket of sockets) socket.destroy();
+      await new Promise(resolve => server.close(resolve));
+    }
+  };
+}
+
 test('root TCP connect is operational without beams and rejects unavailable hub', async () => {
   const sockets = new Set();
   const hub = createServer(socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
@@ -100,8 +125,9 @@ test('closing during scanner startup leaves no reconnect timer or open scanner',
 });
 
 test('progressive SEN interests start independently before all producers exist', async () => {
+  const hub = await createDiscoveryHub();
   const common = {
-    port: 53000 + process.pid % 1000, interfaceAddress: '127.0.0.1',
+    tcpHub: hub.address,
     listenHost: '127.0.0.1', advertisedHost: '127.0.0.1',
     beamPeriodMs: 30, busMulticast: false, timeout: 2000,
     presenceTimeoutMs: 0, reconnect: false
@@ -135,6 +161,7 @@ test('progressive SEN interests start independently before all producers exist',
     await consumer.close();
     await a?.close();
     await b?.close();
+    await hub.close();
   }
 });
 

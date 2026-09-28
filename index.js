@@ -1,3 +1,5 @@
+// @ts-check
+
 /**
  * Public sen-ether-client API.
  *
@@ -64,6 +66,7 @@
  * @property {number} [busMulticastPort=50985] Native bus multicast UDP port.
  * @property {Array<{min:number,max:number}>} [busMulticastRange] Four-octet range used to derive native bus multicast groups.
  * @property {object} [target] Already discovered/direct SEN target.
+ * @property {SenResourceLimits} [resourceLimits] Limits for remote-controlled sizes and in-memory protocol state.
  * @property {import('./lib/stl.js').StlTypeRegistry|Map<string, object>|Record<string, object>|object[]} [types]
  * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl() or Sen.loadFom().
  */
@@ -116,12 +119,47 @@
  */
 
 /**
- * @typedef {string | number | ((object: SenRemoteObject) => boolean)} SenObjectSelector
+ * @typedef {object} SenResourceLimits
+ * @property {number} [maxFrameSize]
+ * @property {number} [maxReceiveBufferSize]
+ * @property {number} [maxStringBytes]
+ * @property {number} [maxBufferBytes]
+ * @property {number} [maxSequenceLength]
+ * @property {number} [maxDiscoveredProcesses]
+ * @property {number} [maxConnections]
+ * @property {number} [maxInterestsPerBus]
+ * @property {number} [maxRemoteInterestsPerBus]
+ * @property {number} [maxPendingRequestsPerBus]
+ * @property {number} [maxForwardedObjectRoutesPerBus]
+ * @property {number} [maxPendingTransitCallsPerBus]
+ * @property {number} [maxRemoteParticipantsPerBus]
+ * @property {number} [maxPendingStatesPerObject]
+ * @property {number} [maxPendingMethodCallsPerBus]
+ */
+
+/**
+ * @typedef {object} SenChange
+ * @property {import('./lib/sen.js').SenRemoteObject} object
+ * @property {string} name
+ * @property {unknown} value
+ * @property {unknown} [previous]
+ * @property {bigint|number|undefined} [timestamp]
+ * @property {bigint|undefined} [timestampNs]
+ */
+
+/**
+ * @typedef {object} SenChangeBatch
+ * @property {SenChange[]} changes
+ * @property {number} dropped Number of changes dropped since the previous batch.
+ */
+
+/**
+ * @typedef {string | number | ((object: import('./lib/sen.js').SenRemoteObject) => boolean)} SenObjectSelector
  */
 
 /**
  * @typedef {object} SenRuntimeEvent
- * @property {SenRemoteObject} object Remote object that produced the event.
+ * @property {import('./lib/sen.js').SenRemoteObject} object Remote object that produced the event.
  * @property {number} id SEN event member ID.
  * @property {string|undefined} name Resolved event name.
  * @property {unknown[]|undefined} args Decoded arguments when the EventSpec is known.

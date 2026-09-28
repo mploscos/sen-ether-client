@@ -70,6 +70,7 @@ test('reconnect restarts existing interests after process restart', {
 }, async () => {
   let processA;
   let processB;
+  let publication;
   const sen = new Sen({
     timeout: Number(process.env.SEN_RECONNECT_OPERATION_TIMEOUT_MS ?? 5000),
     reconnect: true,
@@ -106,6 +107,13 @@ test('reconnect restarts existing interests after process restart', {
     for (const item of additional) {
       assert.ok(item.objects().length >= 0);
     }
+    if (process.env.SEN_RECONNECT_PUBLISH_BUS) {
+      publication = await sen.publish(process.env.SEN_RECONNECT_PUBLISH_BUS, {
+        name: 'reconnect-js-publication',
+        className: 'integration.ReconnectPublication',
+        properties: { generation: 1 }
+      });
+    }
 
     const stale = once(interest, 'stale');
     const reconnected = once(sen, 'reconnect');
@@ -119,6 +127,10 @@ test('reconnect restarts existing interests after process restart', {
     assert.equal(second.matches(objectSelector), true);
     for (const item of additional) {
       assert.equal(item.changeMode, interestOptions.changeMode);
+    }
+    if (publication) {
+      await publication.update({ generation: 2 });
+      assert.equal(publication.snapshot.generation, 2);
     }
   } finally {
     await sen.close();
