@@ -1645,7 +1645,7 @@ test('published objects emit typed and inherited events to consumers', async t =
     listenHost: '127.0.0.1', advertisedHost: '127.0.0.1', interfaceAddress: '127.0.0.1',
     port: 49500 + (process.pid % 500), busMulticastPort: 54000 + (process.pid % 1000), beamPeriodMs: 100
   };
-  const types = (await Sen.loadStl(new URL('./fixtures/events.stl', import.meta.url).pathname)).toTypeSpecs();
+  const types = (await Sen.loadStl(new URL('./fixtures/events.stl', import.meta.url))).toTypeSpecs();
   const producer = await Sen.connect({ ...options, appName: 'event-producer', types });
   const consumer = await Sen.connect({ ...options, appName: 'event-consumer' });
 

@@ -218,8 +218,6 @@ test('a truncated TCP frame is reported when its connection closes', async t => 
     busMulticast: false,
     multicastDiscovery: false
   });
-  const warnings = [];
-  server.on('warning', error => warnings.push(error));
   server.on('error', () => {});
   let socket;
   try {
@@ -227,10 +225,10 @@ test('a truncated TCP frame is reported when its connection closes', async t => 
     socket = net.createConnection(server.listenEndpoint);
     socket.on('error', () => {});
     await waitForEvent(socket, 'connect');
-    socket.write(Buffer.from([1, 2, 3]));
-    socket.destroy();
-    await waitUntil(() => warnings.some(error => error.code === 'SEN_TRUNCATED_FRAME'));
-    assert.equal(warnings.some(error => error.code === 'SEN_TRUNCATED_FRAME'), true);
+    const warningReceived = waitForEvent(server, 'warning');
+    socket.end(Buffer.from([1, 2, 3]));
+    const [warning] = await warningReceived;
+    assert.equal(warning.code, 'SEN_TRUNCATED_FRAME');
   } finally {
     socket?.destroy();
     await server.close();
