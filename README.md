@@ -1,15 +1,19 @@
 # sen-ether-client
 
-Use SEN from Node.js without native bindings or a local SEN installation.
+Use Sen from Node.js without native bindings or a local Sen installation.
 
-Connect to existing SEN sessions, read live objects, react to changes and
-events, call methods, or publish JavaScript objects as regular SEN
+Connect to existing Sen sessions, read live objects, react to changes and
+events, call methods, or publish JavaScript objects as regular Sen
 participants.
+
+[Sen](https://github.com/airbus/sen) is a general-purpose, distributed,
+object-oriented system for building modular applications that communicate
+through objects, properties, methods and events.
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/sen-ether-client)](./LICENSE)
 
-**Pure JavaScript · ESM · Multi-session · STL and HLA FOM support · Automatic reconnect**
+**Pure JavaScript · ESM · Multi-session · STL and HLA FOM support**
 
 ## Get started
 
@@ -40,8 +44,8 @@ try {
 }
 ```
 
-In `chess.board`, `chess` is the SEN session and `board` is the bus. Discovery
-uses SEN multicast by default and continues while the client is running.
+In `chess.board`, `chess` is the Sen session and `board` is the bus. Discovery
+uses Sen multicast by default and continues while the client is running.
 
 ## Work with a remote object
 
@@ -56,18 +60,18 @@ object.on('change:altitude', ({ value }) => console.log(value));
 object.on('warningRaised', ({ args }) => console.log(args));
 
 await object.set('selected', true);            // Writable STL property
-const result = await object.call('reset', []); // SEN method
+const result = await object.call('reset', []); // Sen method
 ```
 
 | Need | API |
 | --- | --- |
 | Current properties | `object.snapshot` |
 | Property changes | `object.on('change:<name>', handler)` |
-| SEN events | `object.on('<eventName>', handler)` |
+| Sen events | `object.on('<eventName>', handler)` |
 | Writable property | `object.set(name, value)` |
 | Method call | `object.call(name, args)` |
 
-Values and arguments are decoded from the object's SEN type information.
+Values and arguments are decoded from the object's Sen type information.
 
 ## Publish a JavaScript object
 
@@ -109,7 +113,7 @@ try {
 }
 ```
 
-To native applications, the JavaScript publisher behaves like any other SEN
+To native applications, the JavaScript publisher behaves like any other Sen
 participant.
 
 For buses in different sessions, use a qualified name such as `chess.board`.
@@ -155,7 +159,7 @@ fixed targets, multicast settings and reconnect behaviour.
 
 ## Load application types
 
-For consumers, type information is normally requested from the SEN publisher.
+For consumers, type information is normally requested from the Sen publisher.
 For publishers, load the STL used by the application:
 
 ```js
@@ -174,7 +178,7 @@ const types = await Sen.loadStl(new URL('./stl', import.meta.url));
 
 STL classes, inheritance, properties, methods, events and value types are
 resolved automatically. HLA FOM XML layouts can be loaded with `Sen.loadFom()`
-or imported from STL. This imports the FOM as SEN type information; it does not
+or imported from STL. This imports the FOM as Sen type information; it does not
 join an HLA federation.
 
 See [STL loading](./API.md#load-stl) and
@@ -203,7 +207,7 @@ Queue limits, batch intervals and backpressure policies are described in the
 
 ## Command-line tools
 
-Inspect the SEN environment without writing an application:
+Inspect the Sen environment without writing an application:
 
 ```bash
 npx sen-ether-scan --timeout 3000
@@ -236,7 +240,7 @@ Check these first:
 
 1. Use a session-qualified query: `SELECT * FROM session.bus`.
 2. Confirm discovery with `npx sen-ether-scan`.
-3. On a multi-interface machine, set `interfaceAddress` to the SEN interface.
+3. On a multi-interface machine, set `interfaceAddress` to the Sen interface.
 4. Confirm the publisher uses the same STL revision as the consumer.
 5. Use a TCP discovery hub if multicast is unavailable between hosts.
 
@@ -247,7 +251,7 @@ This option is intended for temporary diagnostics.
 
 ## Compatibility
 
-| sen-ether-client | Node.js | SEN kernel | Ether |
+| sen-ether-client | Node.js | Sen kernel | Ether |
 | --- | --- | --- | --- |
 | 0.7.x | >= 22 | 9 | 2 |
 
