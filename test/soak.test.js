@@ -137,7 +137,7 @@ test('TCP stability workload bounds listeners, requests and memory', {
       operations += 1;
 
       if (!reconnected && Date.now() >= deadline - durationMs / 2) {
-        const reconnect = once(consumer, 'reconnect');
+        const reconnect = once(consumer, 'reconnect', { signal: AbortSignal.timeout(5_000) });
         const connection = consumer.client.connections.values().next().value;
         assert.ok(connection, 'expected an active producer connection');
         connection.socket.destroy(new Error('intentional soak reconnect'));

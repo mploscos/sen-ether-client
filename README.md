@@ -15,10 +15,6 @@ through objects, properties, methods and events.
 
 **Pure JavaScript · ESM · Multiple Sen sessions · STL and HLA FOM support**
 
-“Multiple Sen sessions” means that one root client can discover and work with
-qualified buses such as `chess.board` and `simulation.tracks` at the same time.
-It does not mean that one object belongs to several sessions.
-
 ## Get started
 
 Install the package:

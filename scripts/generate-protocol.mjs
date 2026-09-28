@@ -109,7 +109,7 @@ export const CUSTOM_TYPE_DATA = Object.freeze(${js(constants.CUSTOM_TYPE_DATA)})
 
 if (process.argv.includes('--check')) {
   const current = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, 'utf8') : '';
-  if (current !== output) {
+  if (current.replaceAll('\r\n', '\n') !== output) {
     console.error('generated protocol is out of date; run npm run generate:protocol');
     process.exitCode = 1;
   }

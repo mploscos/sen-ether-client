@@ -2272,7 +2272,7 @@ test('root producer publishes qualified buses in multiple local sessions', async
   }
 });
 
-test('a local producer stays available when its last consumer disconnects', async t => {
+test('a local producer stays available when its last consumer disconnects normally or with an error', async t => {
   if (!await canListenTcp()) {
     t.skip('TCP listen is not permitted in this test environment');
     return;
@@ -2318,6 +2318,8 @@ test('a local producer stays available when its last consumer disconnects', asyn
     await consumer.connect(initialClient.listenEndpoint);
     await ready;
     await consumer.close();
+    await wait(100);
+    initialClient.emit('close', true, { incoming: true });
     await wait(100);
 
     assert.equal(producer.client, initialClient);
