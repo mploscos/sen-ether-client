@@ -2,8 +2,9 @@
   "kernelProtocolVersion": 9,
   "etherProtocolVersion": 2,
   "source": {
-    "senVersion": "0.6.0-rc1",
-    "note": "Informational only. Runtime compatibility is checked with kernelProtocolVersion and etherProtocolVersion."
+    "senVersion": "0.6.0",
+    "senCommit": "48f329aa67c65518eb4299b50564d345ed1d54f0",
+    "note": "Provenance only. Runtime compatibility requires tests in addition to protocol version checks."
   },
   "files": {
     "etherRuntime": "ether/runtime.stl",

@@ -13,7 +13,7 @@ through objects, properties, methods and events.
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/sen-ether-client)](./LICENSE)
 
-**Pure JavaScript · ESM · Multi-session · STL and HLA FOM support**
+**Pure JavaScript · ESM · Multiple Sen sessions · STL and HLA FOM support**
 
 ## Get started
 
@@ -205,6 +205,26 @@ tracks.on('changes', ({ changes, dropped }) => {
 Queue limits, batch intervals and backpressure policies are described in the
 [`SenInterest` reference](./API.md#seninterest).
 
+## Resource limits and trust
+
+Remote-controlled frame, string, buffer and sequence sizes are bounded before
+the client waits for or allocates their full payload. Connections, interests,
+pending requests and routing state also have configurable limits:
+
+```js
+const sen = await Sen.connect({
+  resourceLimits: {
+    maxFrameSize: 32 * 1024 * 1024,
+    maxReceiveBufferSize: 32 * 1024 * 1024 + 5
+  }
+});
+```
+
+Defaults and all option names are in [the API reference](./API.md#resource-limits).
+Sen Ether has no built-in peer authentication or encryption; use the client on
+a trusted network or through appropriate network protection. A malformed TCP
+peer is disconnected without taking down healthy connections.
+
 ## Command-line tools
 
 Inspect the Sen environment without writing an application:
@@ -251,16 +271,25 @@ This option is intended for temporary diagnostics.
 
 ## Compatibility
 
-| sen-ether-client | Node.js | Sen kernel | Ether |
+| sen-ether-client | Node.js | Sen kernel protocol | Ether protocol |
 | --- | --- | --- | --- |
-| 0.7.x | >= 22 | 9 | 2 |
+| 0.8.x | >= 22 | 9 | 2 |
 
-The protocol versions are checked during the handshake. The library has no
-runtime dependencies.
+Protocol versions are checked during the handshake, but matching numbers alone
+do not prove release compatibility. See the [tested compatibility matrix](./docs/COMPATIBILITY.md)
+and [real Sen integration guide](./docs/INTEGRATION.md). The library has no runtime
+dependencies.
 
 ## More documentation
 
 - [Complete API reference](./API.md)
+- [Architecture and routing invariants](./docs/ARCHITECTURE.md)
+- [Compatibility policy and known limitations](./docs/COMPATIBILITY.md)
+- [Integration and stability tests](./docs/INTEGRATION.md)
+- [Upgrade guide](./docs/UPGRADING.md)
+- [Changelog](./CHANGELOG.md)
+- [Trust and deployment boundary](./docs/COMPATIBILITY.md#trust-and-deployment-boundary)
+- [Third-party notices](./THIRD_PARTY_NOTICES.md)
 - [Runnable examples](./examples)
 - Advanced browser-safe type inspection is available from
   `sen-ether-client/types`.

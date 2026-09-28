@@ -1179,6 +1179,8 @@ test('Sen keeps multi-producer objects stable after interest recreation', async 
   const discoveryPort = 47000 + (process.pid % 1000);
   const options = {
     session,
+    localSession: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -1307,6 +1309,7 @@ test('Sen relays remote publications through a three-participant bus owner', asy
   const common = {
     session,
     localSession: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -1446,6 +1449,8 @@ test('Sen JS published class specs announce dependent types', async t => {
   const discoveryPort = 48000 + (process.pid % 1000);
   const options = {
     session,
+    localSession: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -1557,6 +1562,8 @@ test('Sen JS published objects can handle remote method calls and publish update
   const discoveryPort = 49000 + (process.pid % 1000);
   const options = {
     session,
+    localSession: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -1633,11 +1640,12 @@ test('published objects emit typed and inherited events to consumers', async t =
 
   const session = `js-events-${process.pid}-${Date.now()}`;
   const options = {
-    session, reconnect: false, timeout: 3000, busMulticast: true,
+    session, localSession: true, multicastDiscovery: false,
+    reconnect: false, timeout: 3000, busMulticast: false,
     listenHost: '127.0.0.1', advertisedHost: '127.0.0.1', interfaceAddress: '127.0.0.1',
     port: 49500 + (process.pid % 500), busMulticastPort: 54000 + (process.pid % 1000), beamPeriodMs: 100
   };
-  const types = (await Sen.loadStl(new URL('./fixtures/events.stl', import.meta.url).pathname)).toTypeSpecs();
+  const types = (await Sen.loadStl(new URL('./fixtures/events.stl', import.meta.url))).toTypeSpecs();
   const producer = await Sen.connect({ ...options, appName: 'event-producer', types });
   const consumer = await Sen.connect({ ...options, appName: 'event-consumer' });
 
@@ -1717,6 +1725,8 @@ test('Sen JS published objects handle writable property setters without a method
   const discoveryPort = 49000 + (process.pid % 1000);
   const options = {
     session,
+    localSession: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -1800,6 +1810,8 @@ test('remote method calls wait for STL argument and return type dependencies', a
   const session = `js-method-dependencies-${process.pid}-${Date.now()}`;
   const options = {
     session,
+    localSession: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -2164,6 +2176,8 @@ test('published object handles update snapshots and remove their object', async 
   const session = `js-handle-${process.pid}-${Date.now()}`;
   const options = {
     session,
+    localSession: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -2218,6 +2232,7 @@ test('root producer publishes qualified buses in multiple local sessions', async
 
   const options = {
     announceDiscovery: true,
+    multicastDiscovery: false,
     reconnect: false,
     timeout: 3000,
     busMulticast: false,
@@ -2257,7 +2272,7 @@ test('root producer publishes qualified buses in multiple local sessions', async
   }
 });
 
-test('a local producer stays available when its last consumer disconnects', async t => {
+test('a local producer stays available when its last consumer disconnects normally or with an error', async t => {
   if (!await canListenTcp()) {
     t.skip('TCP listen is not permitted in this test environment');
     return;
@@ -2267,6 +2282,7 @@ test('a local producer stays available when its last consumer disconnects', asyn
   const options = {
     session,
     localSession: true,
+    multicastDiscovery: false,
     announceDiscovery: true,
     reconnect: true,
     reconnectDelayMs: 10,
@@ -2303,6 +2319,8 @@ test('a local producer stays available when its last consumer disconnects', asyn
     await ready;
     await consumer.close();
     await wait(100);
+    initialClient.emit('close', true, { incoming: true });
+    await wait(100);
 
     assert.equal(producer.client, initialClient);
     assert.equal(reconnects, 0);
@@ -2322,6 +2340,8 @@ test('published objects are restored once after local session reconnect', async 
   const session = `js-republish-${process.pid}-${Date.now()}`;
   const options = {
     session,
+    localSession: true,
+    multicastDiscovery: false,
     reconnect: true,
     reconnectDelayMs: 1,
     timeout: 3000,
