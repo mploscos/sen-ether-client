@@ -1,6 +1,6 @@
 {
   "name": "sen-ether-client",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Pure JavaScript SEN Ether client for consuming and publishing SEN objects from Node.js",
   "senCompatibility": {
     "kernelProtocolVersion": 9,
@@ -47,6 +47,10 @@
   },
   "exports": {
     ".": "./index.js",
+    "./interest-query": {
+      "types": "./types/interest-query.d.ts",
+      "default": "./lib/interest-query.js"
+    },
     "./types": {
       "types": "./types/types.d.ts",
       "default": "./lib/types/index.js"

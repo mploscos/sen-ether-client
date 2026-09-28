@@ -141,3 +141,4 @@ export { generateStlModule } from './lib/stl-module.js';
 export { parseFom, resolveFom, FomResolutionError } from './lib/fom.js';
 export { parseXml, XmlSyntaxError } from './lib/xml.js';
 export { senTypeHash, senTypeHashes } from './lib/type-hash.js';
+export { compileInterestQuery, parseInterestQuery } from './lib/interest-query.js';
