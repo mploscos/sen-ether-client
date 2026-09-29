@@ -61,15 +61,29 @@ object.on('warningRaised', ({ args }) => console.log(args));
 
 await object.set('selected', true);            // Writable STL property
 const result = await object.call('reset', []); // Sen method
+
+await object.call('join', ['world1'], { timeout: 30_000 });
+await object.call('join', ['world1'], { timeout: 0 });
+await object.set('selected', false, { timeout: 30_000 });
 ```
+
+Configure the default method-response deadline with
+`Sen.connect({ methodTimeout: 30_000 })`. A per-call `timeout` takes precedence;
+`timeout: 0` disables the local timer for that call. A timeout rejects with
+`error.code === 'SEN_METHOD_TIMEOUT'`, `error.method`, and `error.timeout`.
+It does not cancel the remote method or close the bus, interests, or
+connection. A side-effecting method may finish after the local deadline, so its
+remote result is unknown; a late response is ignored. Consumer code should not
+treat this error as a disconnection or automatically call `leave()` for every
+method error.
 
 | Need | API |
 | --- | --- |
 | Current properties | `object.snapshot` |
 | Property changes | `object.on('change:<name>', handler)` |
 | Sen events | `object.on('<eventName>', handler)` |
-| Writable property | `object.set(name, value)` |
-| Method call | `object.call(name, args)` |
+| Writable property | `object.set(name, value, options)` |
+| Method call | `object.call(name, args, options)` |
 
 Values and arguments are decoded from the object's Sen type information.
 

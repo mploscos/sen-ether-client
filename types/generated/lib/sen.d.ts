@@ -22,6 +22,7 @@ export declare class Sen extends EventEmitter {
         announceDiscovery: boolean;
         targetDiscoverySettleMs: number;
         timeout: number;
+        methodTimeout: number;
         discoverySettleMs: number;
         participantReadyTimeoutMs: number;
         socketKeepAlive: boolean;
@@ -67,6 +68,7 @@ export declare class Sen extends EventEmitter {
         announceDiscovery: boolean;
         targetDiscoverySettleMs: number;
         timeout: number;
+        methodTimeout: number;
         discoverySettleMs: number;
         participantReadyTimeoutMs: number;
         socketKeepAlive: boolean;

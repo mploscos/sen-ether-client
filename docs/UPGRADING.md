@@ -1,4 +1,23 @@
-# Updating from 0.7.x to 0.8.0
+# Updating from 0.8.0 to 0.8.1
+
+No migration is required. Existing method calls keep a 5000 ms local response
+timeout. Applications with slower methods can configure a default or override
+one call:
+
+```js
+const sen = await Sen.connect({ methodTimeout: 30_000 });
+await object.call('join', ['world1'], { timeout: 60_000 });
+await object.set('selected', true, { timeout: 0 });
+```
+
+`timeout: 0` means no local method timer; connection or bus closure can still
+reject the call. `SEN_METHOD_TIMEOUT` means only that no response arrived by the
+local deadline. It does not cancel the remote operation or indicate a
+disconnection, and a side-effecting operation may still complete. Audit broad
+`catch`/`finally` cleanup that calls `leave()` or treats every method error as a
+lost connection.
+
+## Updating from 0.7.x to 0.8.0
 
 The documented 0.7.7 API remains available. Existing `Sen.connect()`, interests,
 remote objects and JavaScript publication code do not require a migration.

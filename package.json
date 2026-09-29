@@ -1,6 +1,6 @@
 {
   "name": "sen-ether-client",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Pure JavaScript SEN Ether client for consuming and publishing SEN objects from Node.js",
   "senCompatibility": {
     "kernelProtocolVersion": 9,
@@ -70,7 +70,7 @@
     "generate:protocol": "node ./scripts/generate-protocol.mjs",
     "lint": "eslint .",
     "typecheck": "npm run build:types && tsc -p tsconfig.json && tsc -p tsconfig.declarations.json",
-    "test": "node --test --test-concurrency=1 --test-reporter spec ./test/protocol.test.js ./test/codec.test.js ./test/discovery.test.js ./test/live-discovery.test.js ./test/client.test.js ./test/routing.test.js ./test/sen.test.js ./test/stl.test.js ./test/types.test.js ./test/resource-limits.test.js",
+    "test": "node --test --test-concurrency=1 --test-reporter spec ./test/protocol.test.js ./test/codec.test.js ./test/discovery.test.js ./test/live-discovery.test.js ./test/client.test.js ./test/routing.test.js ./test/sen.test.js ./test/method-timeout.test.js ./test/stl.test.js ./test/types.test.js ./test/resource-limits.test.js",
     "test:handles": "node ./scripts/run-tests.mjs",
     "test:integration": "npm run test:integration:sen",
     "test:integration:sen": "node --test --experimental-test-isolation=none ./test/integration-hmi-diagnostics.test.js ./test/integration-publish.test.js ./test/integration-reconnect.test.js",

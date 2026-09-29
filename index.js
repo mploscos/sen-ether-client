@@ -40,6 +40,7 @@
  * @property {string} [bindAddress] Optional multicast discovery bind address.
  * @property {string} [app] Remote process appName substring filter.
  * @property {number} [timeout=3000] Discovery and operation timeout in ms.
+ * @property {number} [methodTimeout=5000] Local method response timeout in ms. `0` disables it.
  * @property {number} [discoverySettleMs=100] Discovery settle time after the first process is found.
  * @property {number} [targetDiscoverySettleMs=1000] Target collection window for root multi-session discovery.
  * @property {boolean} [progressiveDiscovery=true] Root connect resolves when discovery is operational, without waiting for producers. False enables legacy snapshot discovery.
@@ -85,6 +86,11 @@
  * @property {number} [maxQueuedChanges=10000] Batched change queue limit.
  * @property {'drop-oldest'|'drop-newest'|'error'} [backpressure='drop-oldest'] Queue overflow policy.
  * @property {boolean} [coalesce=false] Keep only latest queued change per object/property.
+ */
+
+/**
+ * @typedef {object} SenMethodCallOptions
+ * @property {number} [timeout] Local method response timeout in ms. `0` disables the local timeout.
  */
 
 /**

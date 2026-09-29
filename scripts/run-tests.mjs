@@ -14,6 +14,7 @@ const args = [
   './test/client.test.js',
   './test/routing.test.js',
   './test/sen.test.js',
+  './test/method-timeout.test.js',
   './test/stl.test.js',
   './test/types.test.js',
   './test/resource-limits.test.js'

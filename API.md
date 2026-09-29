@@ -66,6 +66,9 @@ Connection options:
   selected interface address.
 - `beamPeriodMs`: active discovery beam period. Defaults to `1000`.
 - `timeout`: discovery and operation timeout in ms.
+- `methodTimeout`: local timeout for a SEN method response in ms. Defaults to
+  `5000`. Set it to `0` to disable the local method timeout. It is independent
+  of discovery, connection, TypeSpec and object-wait timeouts.
 - `discoverySettleMs`: discovery settle time after the first process is found.
   Defaults to `100`.
 - `targetDiscoverySettleMs`: target collection window when connecting without a
@@ -516,7 +519,37 @@ Returned by `interest.waitFor(...)`, `interest.get(...)`, or
 console.log(await object.get('label'));
 await object.set('label', 'from-js');
 console.log(await object.call('ping', ['hello']));
+
+await object.call('join', ['world1'], { timeout: 30_000 });
+await object.call('join', ['world1'], { timeout: 0 });
+await object.set('label', 'patient-write', { timeout: 30_000 });
 ```
+
+Method response timeouts use the per-call `options.timeout`, then the
+connection's `methodTimeout`, then `5000` ms. A value of `0` creates no local
+method-response timer; once sent, the call waits for a response or a
+connection/bus closure.
+
+A method timeout rejects only that call with `code === 'SEN_METHOD_TIMEOUT'`,
+plus `method` and `timeout` properties. It is a local deadline: it does not
+cancel the remote operation, close the connection or prove that the method
+failed. A method with side effects may complete later, and the remote result is
+unknown after the timeout. Its eventual late response is safely ignored.
+
+```js
+try {
+  await object.call('join', ['world1']);
+} catch (error) {
+  if (error.code === 'SEN_METHOD_TIMEOUT') {
+    // The connection remains operational; the remote result is unknown.
+  }
+}
+```
+
+Do not treat every method error as a lost connection. In particular, consumer
+cleanup such as `catch { await leave(); }`, `finally { await leave(); }`, or a
+generic recovery path should distinguish `SEN_METHOD_TIMEOUT` before closing a
+bus or interest.
 
 Main properties:
 
@@ -537,7 +570,9 @@ Main methods:
 - `object.getPropertyTimestamp(property)`
 - `object.getPropertyObservedTimestamp(property)`
 - `await object.set(property, value)`
+- `await object.set(property, value, { timeout })`
 - `await object.call(method, args)`
+- `await object.call(method, args, { timeout })`
 
 Main events:
 

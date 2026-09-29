@@ -94,21 +94,17 @@ export declare class SenRemoteObject extends EventEmitter {
     /**
    * @param {string} name
    * @param {unknown} value
-   * @param {{timeout?:number}} [options]
+   * @param {import('../index.js').SenMethodCallOptions} [options]
    * @returns {Promise<void>}
    */
-    set(name: string, value: unknown, options?: {
-        timeout?: number;
-    }): Promise<void>;
+    set(name: string, value: unknown, options?: import('../index.js').SenMethodCallOptions): Promise<void>;
     /**
    * @param {string} name
    * @param {unknown[]} [args]
-   * @param {{timeout?:number}} [options]
+   * @param {import('../index.js').SenMethodCallOptions} [options]
    * @returns {Promise<unknown>}
    */
-    call(name: string, args?: unknown[], options?: {
-        timeout?: number;
-    }): Promise<unknown>;
+    call(name: string, args?: unknown[], options?: import('../index.js').SenMethodCallOptions): Promise<unknown>;
     /** Decode and apply a full state or incremental property update buffer. */
     applyState(buffer: any, source: any, timestamp: any, options?: {}): void;
     /** Decode and dispatch one runtime event to object, interest, bus and Sen. */
