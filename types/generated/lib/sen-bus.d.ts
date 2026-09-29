@@ -89,4 +89,10 @@ export declare class SenBus extends EventEmitter {
     }): Promise<void>;
     /** Encode and send one remote method call with a bounded pending ticket. */
     callObjectMethod(object: any, method: any, args: any, options?: {}): Promise<any>;
+    /**
+     * Reject and remove matching method calls still waiting for a response.
+     * @param {Error} error
+     * @param {(pending:object) => boolean} [predicate]
+     */
+    rejectPendingCalls(error: Error, predicate?: (pending: object) => boolean): void;
 }

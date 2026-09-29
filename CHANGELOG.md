@@ -3,6 +3,28 @@
 All notable changes are documented here. The project follows semantic version
 intent while its public API remains pre-1.0.
 
+## 0.8.1 - 2026-09-29
+
+### Added
+
+- `methodTimeout` configures the local method-response deadline, while a
+  per-call `timeout` still takes precedence. `timeout: 0` disables the local
+  timer.
+- Method deadlines reject with `SEN_METHOD_TIMEOUT` and expose `method` and
+  `timeout` fields.
+
+### Fixed
+
+- Method timeouts affect only their own pending ticket and do not close buses,
+  interests or connections. Late responses remain safely ignored.
+- Pending method timers are cleared on responses, send failures, bus/session
+  closure, participant loss and reconnection preparation.
+
+### Compatibility
+
+- Existing `call()` and `set()` forms remain unchanged. Kernel protocol 9,
+  Ether protocol 2 and the wire codecs are unchanged.
+
 ## 0.8.0 - 2026-09-28
 
 ### Added
