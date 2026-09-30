@@ -380,6 +380,10 @@ test('SEN EnumTypeSpec decodes as numeric key and encodes numeric or named value
 
   assert.equal(decodeValue(encodeValue(2, 'test.Force', typeRegistry), 'test.Force', typeRegistry), 2);
   assert.equal(decodeValue(encodeValue('Hostile', 'test.Force', typeRegistry), 'test.Force', typeRegistry), 2);
+  assert.throws(
+    () => encodeValue({}, 'test.Force', typeRegistry),
+    /SEN enum test\.Force expects a numeric key or enumerator name, got object/
+  );
 });
 
 test('SEN VariantTypeSpec round-trips with explicit field type', () => {

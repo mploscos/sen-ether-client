@@ -8,7 +8,61 @@ import { createProcessInfo, EtherClient, validateRemoteHello } from '../lib/clie
 import { SenBinaryWriter } from '../lib/codec.js';
 import { crc32 } from '../lib/crc32.js';
 import { eventHash, methodHash, propertyHash } from '../lib/hash32.js';
+import { collectReferencedTypeNames } from '../lib/sen-object-helpers.js';
 import { encodeArguments, encodeValue } from '../lib/values.js';
+
+test('protocol primitive names are never treated as missing TypeSpecs', () => {
+  const protocolPrimitives = [
+    'uint8Type', 'int16Type', 'uint16Type', 'int32Type', 'uint32Type',
+    'int64Type', 'uint64Type', 'float32Type', 'float64Type',
+    'booleanType', 'stringType', 'durationType', 'timestampType'
+  ];
+  assert.deepEqual([...collectReferencedTypeNames(protocolPrimitives, new Map())], []);
+
+  const registry = new Map();
+  const fields = [];
+  for (const [index, primitive] of protocolPrimitives.entries()) {
+    const typeName = `test.Wrapped${index}`;
+    fields.push({ name: `value${index}`, type: typeName });
+    registry.set(typeName, {
+      qualifiedName: typeName,
+      data: {
+        type: 'AliasTypeSpec',
+        value: { aliasedType: primitive }
+      }
+    });
+  }
+  registry.set('hmi.LatitudeDeg', {
+    qualifiedName: 'hmi.LatitudeDeg',
+    data: {
+      type: 'QuantityTypeSpec',
+      value: { elementType: { type: 'RealType', value: 'float64Type' } }
+    }
+  });
+  fields.push({ name: 'latitude', type: 'hmi.LatitudeDeg' });
+  registry.set('test.Payload', {
+    qualifiedName: 'test.Payload',
+    data: { type: 'StructTypeSpec', value: { fields } }
+  });
+  registry.set('test.Payloads', {
+    qualifiedName: 'test.Payloads',
+    data: { type: 'SequenceTypeSpec', value: { elementType: 'test.Payload' } }
+  });
+  registry.set('test.MaybePayloads', {
+    qualifiedName: 'test.MaybePayloads',
+    data: { type: 'OptionalTypeSpec', value: { type: 'test.Payloads' } }
+  });
+  registry.set('test.PayloadVariant', {
+    qualifiedName: 'test.PayloadVariant',
+    data: {
+      type: 'VariantTypeSpec',
+      value: { fields: [{ key: 0, type: 'test.MaybePayloads' }] }
+    }
+  });
+
+  const required = collectReferencedTypeNames(['test.PayloadVariant'], registry);
+  assert.deepEqual([...required].sort(), [...registry.keys()].sort());
+});
 
 function helloForSession(sessionName, version = { kernel: 9, ether: 2 }) {
   return {

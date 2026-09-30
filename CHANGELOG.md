@@ -3,6 +3,22 @@
 All notable changes are documented here. The project follows semantic version
 intent while its public API remains pre-1.0.
 
+## 0.8.2 - 2026-09-30
+
+### Fixed
+
+- Method calls no longer wait for nonexistent TypeSpecs when nested structs,
+  quantities or other custom types reference any protocol primitive name, such
+  as `float64Type`, `uint8Type`, `booleanType` or `timestampType`.
+- Invalid object values supplied for enum arguments now fail with an explicit
+  diagnostic describing the supported numeric-key and enumerator-name forms.
+
+### Compatibility
+
+- Method signatures and wire encoding are unchanged. Enum arguments continue to
+  accept numeric keys and names, and complex struct arguments remain plain
+  JavaScript objects whose fields follow their STL definitions.
+
 ## 0.8.1 - 2026-09-29
 
 ### Added
