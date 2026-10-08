@@ -142,6 +142,8 @@ export declare class Sen extends EventEmitter {
     }): Promise<import("./stl-resolver.js").StlTypeRegistry>;
     /** Load HLA FOM XML modules into a reusable SEN type registry. */
     static loadFom(sourcePath: any, options?: {}): Promise<import("./stl-resolver.js").StlTypeRegistry>;
+    /** Load the RPR FOM 2.0 modules bundled with sen-ether-client. */
+    static loadRprFom(): Promise<import("./stl-resolver.js").StlTypeRegistry>;
     /**
    * Discover visible SEN buses without creating interests or joining buses.
    *

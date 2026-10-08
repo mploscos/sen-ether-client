@@ -10,3 +10,8 @@ for (const exportedClass of [Sen, SenInterest, SenPublishedObject, SenRemoteObje
     throw new TypeError('main package export is missing');
   }
 }
+
+const rprTypes = await Sen.loadRprFom();
+if (!rprTypes.has('rpr.PhysicalEntity')) {
+  throw new TypeError('bundled RPR FOM is missing PhysicalEntity');
+}

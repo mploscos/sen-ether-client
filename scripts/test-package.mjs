@@ -46,6 +46,7 @@ try {
     'types/types.d.ts',
     'LICENSE',
     'LICENSES/Apache-2.0.txt',
+    'LICENSES/SISO-RPR-FOM.txt',
     'THIRD_PARTY_NOTICES.md',
     'README.md',
     'API.md',
@@ -54,7 +55,8 @@ try {
     'docs/INTEGRATION.md',
     'docs/UPGRADING.md',
     'CHANGELOG.md',
-    'resources/protocol/protocol.json'
+    'resources/protocol/protocol.json',
+    'resources/fom/rpr/RPR-Physical_v2.0.xml'
   ]) {
     if (!files.includes(required)) throw new Error(`package is missing ${required}`);
   }

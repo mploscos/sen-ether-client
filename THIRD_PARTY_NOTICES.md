@@ -23,3 +23,14 @@ JavaScript generated from that metadata are original project integration and
 generation files. This notice records provenance and is not legal advice; the
 license treatment and any downstream distribution obligations should receive
 human review before an official Sen adoption.
+
+## RPR FOM 2.0
+
+The XML modules under `resources/fom/rpr` are unmodified copies of the
+SISO-STD-001.1-2015 Real-time Platform Reference Federation Object Model 2.0,
+obtained from the Sen 0.6.0 distribution.
+
+Copyright © 2015 by the Simulation Interoperability Standards Organization,
+Inc. All rights reserved. Reprinted with permission from SISO Inc. The schema
+and API redistribution grant is reproduced in
+`LICENSES/SISO-RPR-FOM.txt` and in each XML module.

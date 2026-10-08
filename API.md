@@ -232,6 +232,7 @@ Main methods:
 - `await sen.connect(options)`
 - `await Sen.loadStl(sourcePath, options)`
 - `await Sen.loadFom(sourcePath, options)`
+- `await Sen.loadRprFom()`
 - `await sen.interest(query, options)`
 - `await sen.publish(busName, object, options)`
 - `await sen.publishObject(busName, object, options)`
@@ -299,6 +300,18 @@ an adapter.
 By default, interest creation uses the SEN-native `CRC32(query)` value as the
 interest id. Pass `options.id` only when a caller must force a specific native
 interest id.
+
+### Load bundled RPR FOM 2.0
+
+```js
+const types = await Sen.loadRprFom();
+const sen = await Sen.connect({ types });
+```
+
+`Sen.loadRprFom()` resolves the RPR Foundation, Enumerations, Base, Physical,
+Warfare and remaining RPR FOM 2.0 modules bundled with the package. The same
+resolved registry is reused by every call in the process. Use `Sen.loadFom()`
+when an application needs a different FOM version or its own modules.
 
 Session and bus navigation:
 
