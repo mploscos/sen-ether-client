@@ -156,7 +156,7 @@ export type SenConnectOptions = {
      */
     resourceLimits?: SenResourceLimits;
     /**
-     * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl() or Sen.loadFom().
+     * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl(), Sen.loadFom() or Sen.loadRprFom().
      */
     types?: import('./lib/stl.js').StlTypeRegistry | Map<string, object> | Record<string, object> | object[];
 };
@@ -415,7 +415,7 @@ export type SenRuntimeEvent = {
  * @property {object} [target] Already discovered/direct SEN target.
  * @property {SenResourceLimits} [resourceLimits] Limits for remote-controlled sizes and in-memory protocol state.
  * @property {import('./lib/stl.js').StlTypeRegistry|Map<string, object>|Record<string, object>|object[]} [types]
- * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl() or Sen.loadFom().
+ * Reusable local type definitions. A StlTypeRegistry is obtained from Sen.loadStl(), Sen.loadFom() or Sen.loadRprFom().
  */
 /**
  * @typedef {object} SenInterestOptions

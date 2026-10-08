@@ -195,6 +195,14 @@ resolved automatically. HLA FOM XML layouts can be loaded with `Sen.loadFom()`
 or imported from STL. This imports the FOM as Sen type information; it does not
 join an HLA federation.
 
+RPR FOM 2.0 is bundled for applications that publish standard simulation
+entities, so no external XML path is required:
+
+```js
+const types = await Sen.loadRprFom();
+const sen = await Sen.connect({ types });
+```
+
 See [STL loading](./API.md#load-stl) and
 [HLA FOM loading](./API.md#load-hla-fom-xml) for supported layouts and mapping
 options.

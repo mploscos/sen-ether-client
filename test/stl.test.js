@@ -283,6 +283,16 @@ test('Sen.loadFom converts HLA datatypes, classes and mappings to SEN TypeSpecs'
   assert.equal(registry.toTypeSpecs().get('demo.Mode').data.value.enums[1].key, 42);
 });
 
+test('Sen.loadRprFom loads and caches the bundled RPR FOM 2.0 registry', async () => {
+  const first = await Sen.loadRprFom();
+  const second = await Sen.loadRprFom();
+
+  assert.strictEqual(first, second);
+  assert.equal(first.has('rpr.PhysicalEntity'), true);
+  assert.equal(first.has('rpr.WeaponFire'), true);
+  assert.equal(first.toTypeSpecs().get('rpr.PhysicalEntity').data.type, 'ClassTypeSpec');
+});
+
 test('Sen.loadStl resolves XML FOM imports in the same registry', async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sen-ether-client-mixed-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

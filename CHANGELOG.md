@@ -3,6 +3,19 @@
 All notable changes are documented here. The project follows semantic version
 intent while its public API remains pre-1.0.
 
+## 0.9.0 - 2026-10-08
+
+### Added
+
+- The complete RPR FOM 2.0 XML module set is included in the npm package.
+- `Sen.loadRprFom()` returns a process-cached type registry ready for standard
+  RPR publications without requiring an external FOM directory.
+
+### Compatibility
+
+- Existing FOM and STL loading APIs are unchanged. Applications that use a
+  custom RPR version can continue to call `Sen.loadFom()` explicitly.
+
 ## 0.8.2 - 2026-09-30
 
 ### Fixed
