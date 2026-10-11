@@ -8,6 +8,12 @@ import {
   KERNEL_CONTROL_MESSAGE_KEY,
   KERNEL_PROTOCOL_VERSION
 } from '../lib/protocol/generated.js';
+import { resolveProtocolProfile } from '../lib/protocol/profiles.js';
+import {
+  computeBusMulticastGroup,
+  encodeTcpDiscoveryBeam,
+  extractTcpDiscoveryBeams
+} from '../lib/ether-network.js';
 
 test('generated protocol metadata matches bundled protocol pack', () => {
   const protocol = JSON.parse(fs.readFileSync(new URL('../resources/protocol/protocol.json', import.meta.url), 'utf8'));
@@ -35,4 +41,46 @@ test('generated protocol metadata matches bundled protocol pack', () => {
     TypesInfoResponse: 9,
     TypesInfoRejection: 10
   });
+});
+
+test('SEN compatibility profiles select the released transport variants', () => {
+  assert.deepEqual(
+    [resolveProtocolProfile('legacy').kernelProtocolVersion, resolveProtocolProfile('enhanced').kernelProtocolVersion],
+    [9, 11]
+  );
+  assert.equal(resolveProtocolProfile('enhanced').etherProtocolVersion, 2);
+  assert.equal(resolveProtocolProfile('enhanced').tcpDiscoveryFraming, 'length-prefixed');
+  assert.throws(() => resolveProtocolProfile('sen-0.7'), /unsupported SEN protocol profile/);
+  assert.throws(() => resolveProtocolProfile(''), /unsupported SEN protocol profile/);
+});
+
+test('SEN 0.7 TCP discovery framing handles fragmented and coalesced records', () => {
+  const first = Buffer.from([1, 2, 3]);
+  const second = Buffer.from([4, 5]);
+  const stream = Buffer.concat([
+    encodeTcpDiscoveryBeam(first, 'length-prefixed'),
+    encodeTcpDiscoveryBeam(second, 'length-prefixed')
+  ]);
+  const partial = extractTcpDiscoveryBeams(stream.subarray(0, 6), 'length-prefixed');
+  assert.equal(partial.messages.length, 0);
+  const complete = extractTcpDiscoveryBeams(
+    Buffer.concat([partial.remaining, stream.subarray(6)]),
+    'length-prefixed'
+  );
+  assert.deepEqual(complete.messages, [first, second]);
+  assert.equal(complete.remaining.length, 0);
+});
+
+test('SEN 0.7 multicast allocation matches the official RC3 footprint', () => {
+  const profile = resolveProtocolProfile('enhanced');
+  assert.equal(computeBusMulticastGroup(
+    1572376476,
+    2702338936,
+    60606,
+    profile.busMulticastRange,
+    {
+      allocation: profile.busMulticastAllocation,
+      exclusions: profile.busMulticastExclusions
+    }
+  ), '239.157.174.214');
 });

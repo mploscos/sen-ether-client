@@ -9,6 +9,7 @@ export declare const DEFAULT_DISCOVERY_GROUP = "239.255.0.44";
 export declare const DEFAULT_DISCOVERY_PORT = 60543;
 export declare const DEFAULT_BUS_MULTICAST_PORT = 50985;
 export declare const TCP_DISCOVERY_BEAM_SIZE = 508;
+export declare const TCP_DISCOVERY_LENGTH_SIZE = 4;
 export declare const DEFAULT_BEAM_PERIOD_MS = 1000;
 export declare const DEFAULT_MULTICAST_RANGE: readonly {
     min: number;
@@ -27,8 +28,13 @@ export declare function normalizeMulticastRange(value: any): {
     min: number;
     max: number;
 }[];
+/** Validate and merge inclusive IPv4 exclusion ranges. */
+export declare function normalizeMulticastExclusions(value?: any[]): {
+    min: number;
+    max: number;
+}[];
 /** Derive the native bus multicast group from session, bus and discovery IDs. */
-export declare function computeBusMulticastGroup(sessionId: any, busId: any, discoveryPort: any, ranges: any): string;
+export declare function computeBusMulticastGroup(sessionId: any, busId: any, discoveryPort: any, ranges: any, options?: {}): string;
 /** Build the stable discovery key for one remote process identity. */
 export declare function processKeyFromInfo(info?: {}): string;
 /** Compare the host, process and session components of two ProcessInfo values. */
@@ -44,6 +50,13 @@ export declare function parseHostPort(value: any, fallbackPort: any): {
 } | undefined;
 /** Pad a discovery beam to the fixed TCP hub record size. */
 export declare function padDiscoveryBeam(buffer: any): any;
+/** Encode one TCP discovery record using the selected SEN transport framing. */
+export declare function encodeTcpDiscoveryBeam(buffer: any, framing?: string): any;
+/** Extract complete TCP discovery records and retain the incomplete tail. */
+export declare function extractTcpDiscoveryBeams(buffer: any, framing?: string): {
+    messages: any[];
+    remaining: any;
+};
 /** Resolve when a close callback fires or a bounded fallback timer expires. */
 export declare function withCloseTimeout(register: any, timeoutMs?: number): Promise<any>;
 export declare function createProcessInfo(options: any): {

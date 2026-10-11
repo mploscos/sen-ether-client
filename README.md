@@ -67,6 +67,22 @@ await object.call('join', ['world1'], { timeout: 0 });
 await object.set('selected', false, { timeout: 30_000 });
 ```
 
+Gateway and adapter code can consume live handles and exact native commits
+without rebuilding them from individual property notifications:
+
+```js
+const cancelAdded = objects.onObjectAdded(object => {
+  object.onAnyChange((values, { timestamp }) => {
+    console.log(object.name, Object.fromEntries(values), timestamp);
+  });
+});
+
+const initial = await objects.getObjectsBatchState();
+// later
+cancelAdded();
+await objects.release();
+```
+
 Configure the default method-response deadline with
 `Sen.connect({ methodTimeout: 30_000 })`. A per-call `timeout` takes precedence;
 `timeout: 0` disables the local timer for that call. A timeout rejects with
@@ -153,6 +169,17 @@ To use a TCP discovery hub:
 
 ```js
 const sen = await Sen.connect({
+  session: 'chess',
+  tcpHub: '127.0.0.1:65222'
+});
+```
+
+SEN 0.6 remains the compatibility default. For SEN 0.7.0-rc3, select the
+`enhanced` profile; the public object API and the rest of the pipeline are unchanged:
+
+```js
+const sen = await Sen.connect({
+  protocolProfile: 'enhanced',
   session: 'chess',
   tcpHub: '127.0.0.1:65222'
 });
@@ -295,7 +322,8 @@ This option is intended for temporary diagnostics.
 
 | sen-ether-client | Node.js | Sen kernel protocol | Ether protocol |
 | --- | --- | --- | --- |
-| 0.8.x | >= 22 | 9 | 2 |
+| 0.10.x (`legacy`) | >= 22 | 9 | 2 |
+| 0.10.x (`enhanced`) | >= 22 | 11 | 2 |
 
 Protocol versions are checked during the handshake, but matching numbers alone
 do not prove release compatibility. See the [tested compatibility matrix](./docs/COMPATIBILITY.md)

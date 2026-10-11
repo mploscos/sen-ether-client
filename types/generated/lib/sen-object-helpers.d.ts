@@ -15,6 +15,8 @@ export declare function findTypeSpec(typeRegistry: any, typeName: any): any;
 export declare function mergedTypeDefinitions(base: any, override: any): Map<any, any> | undefined;
 /** Collect inherited class members of the requested member collection. */
 export declare function collectClassMembers(spec: any, typeRegistry: any, member: any, seen?: Set<any>): any[];
+/** Return the parent-first qualified class lineage for a class TypeSpec. */
+export declare function collectClassLineage(spec: any, typeRegistry: any, seen?: Set<any>): any;
 /** Traverse structural references and return every required non-primitive name. */
 export declare function collectReferencedTypeNames(typeNames: any, typeRegistry: any): Set<any>;
 /** Find a named protocol member in a flat collection. */

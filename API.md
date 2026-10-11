@@ -8,18 +8,20 @@ import { Sen, SenInterest, SenPublishedObject, SenRemoteObject } from 'sen-ether
 
 ## Compatibility
 
-`sen-ether-client@0.8.x` supports:
+`sen-ether-client@0.10.x` provides two explicit profiles:
 
-- kernel protocol `9`
-- ether protocol `2`
+| Profile | SEN release family | Kernel | Ether | TCP discovery |
+| --- | --- | ---: | ---: | --- |
+| `legacy` (default) | 0.6.x | 9 | 2 | fixed 508-byte records |
+| `enhanced` | 0.7.0-rc3 | 11 | 2 | little-endian length prefix |
 
 These protocol versions are checked during the SEN handshake. A different
 kernel or ether protocol should be treated as unsupported unless `sen-ether-client`
 explicitly adds support for it.
 
-The protocol STL files are included in `resources/protocol` as the source for
-the codec. The SEN release noted in that folder is informational; it is not a
-compatibility check.
+The shared protocol STL files are included in `resources/protocol` as the source
+for the codec. Transport differences that are not represented in those STL
+files are selected by `protocolProfile`.
 
 Matching the numbers is necessary but is not a substitute for the real Sen
 matrix in [`docs/COMPATIBILITY.md`](./docs/COMPATIBILITY.md).
@@ -40,6 +42,10 @@ await sen.connect(options);
 
 Connection options:
 
+- `protocolProfile`: SEN wire compatibility profile. It defaults to `legacy`;
+  select `enhanced` for SEN 0.7.0-rc3 and other 0.7 kernels using protocol 11.
+  The profile also selects the matching TCP discovery framing and multicast
+  bus allocation, so applications do not need separate transport settings.
 - `interfaceAddress`: local interface address or interface name for multicast
   discovery.
 - `tcpHub`: optional SEN TCP discovery hub as `host:port`. If omitted,
@@ -244,6 +250,8 @@ Main methods:
 - `await sen.discoverBuses(options)`
 - `sen.listSessions()`
 - `sen.listBuses(options)`
+- `sen.listKnownTypes()`
+- `sen.getType(qualifiedName)`
 - `await sen.bus(name, options)`
 - `sen.objects()`
 - `sen.getObject(selector)`
@@ -488,8 +496,14 @@ Main methods:
 
 - `interest.objects()`
 - `interest.get(selector)`
+- `interest.objectByName(name)`
 - `await interest.waitFor(selector, options)`
+- `interest.onObjectAdded(handler)`
+- `interest.onObjectRemoved(handler)`
+- `interest.onChanges(handler)`
+- `await interest.getObjectsBatchState(options)`
 - `interest.close()`
+- `await interest.release()`
 
 Main events:
 
@@ -500,6 +514,16 @@ Main events:
 - `event`
 - `stale`
 - `restart`
+
+`onObjectAdded()` immediately replays the objects already visible and then
+delivers later arrivals. All handle-oriented `on*` methods return an idempotent
+cancel function. `getObjectsBatchState()` reads already-decoded native
+snapshots, optionally filtered by object and property name, without issuing one
+request per property.
+
+`onChanges()` delivers one record for each exact native object state/update
+commit. It is distinct from the configurable `changes` batching event, whose
+interval, queue and backpressure settings are intended for throughput control.
 
 For browser gateways or high-frequency telemetry, request only the properties
 you need and emit batches instead of one JS event per property update:
@@ -586,6 +610,12 @@ Main methods:
 - `await object.set(property, value, { timeout })`
 - `await object.call(method, args)`
 - `await object.call(method, args, { timeout })`
+- `object.properties()` / `object.methods()` / `object.events()`
+- `object.classLineage()`
+- `object.typeDefinitions()`
+- `object.onPropertyChanged(property, handler)`
+- `object.onAnyChange(handler)`
+- `object.onEventTriggered(event, handler)`
 
 Main events:
 

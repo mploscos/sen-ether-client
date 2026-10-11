@@ -28,8 +28,10 @@ export declare class EtherClient extends EventEmitter {
     options: {
         sessionName: string;
         appName: string;
-        kernelProtocolVersion: number;
-        etherProtocolVersion: number;
+        protocolProfile: any;
+        kernelProtocolVersion: any;
+        etherProtocolVersion: any;
+        tcpDiscoveryFraming: any;
         socketKeepAlive: boolean;
         socketKeepAliveInitialDelayMs: number;
         socketIdleTimeoutMs: number;
@@ -46,10 +48,9 @@ export declare class EtherClient extends EventEmitter {
         presenceTimeoutMs: number;
         presenceCheckIntervalMs: number;
         busMulticastPort: number;
-        busMulticastRange: readonly {
-            min: number;
-            max: number;
-        }[];
+        busMulticastRange: any;
+        busMulticastAllocation: any;
+        busMulticastExclusions: any;
     };
     limits: Readonly<{
         [k: string]: number;
@@ -100,6 +101,7 @@ export declare class EtherClient extends EventEmitter {
    * @param {object} options
    * @param {string} options.sessionName SEN session name. Must match the remote kernel.
  * @param {string} [options.appName]
+ * @param {'legacy'|'enhanced'} [options.protocolProfile='legacy']
  * @param {number} [options.kernelProtocolVersion]
  * @param {number} [options.etherProtocolVersion]
  * @param {boolean} [options.socketKeepAlive]
@@ -109,6 +111,7 @@ export declare class EtherClient extends EventEmitter {
     constructor(options: {
         sessionName: string;
         appName?: string;
+        protocolProfile?: 'legacy' | 'enhanced';
         kernelProtocolVersion?: number;
         etherProtocolVersion?: number;
         socketKeepAlive?: boolean;
