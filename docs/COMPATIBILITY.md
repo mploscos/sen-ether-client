@@ -10,17 +10,18 @@ entry and migration guidance.
 | Area | Declared / observed | Automated in this repository | External validation |
 | --- | --- | --- | --- |
 | Node.js | `>=22` | Node 22 and 24 on Linux and Windows | — |
-| Sen current | not pinned | protocol fixtures and JS participant tests | requires `SEN_INTEGRATION_COMMAND` |
-| Minimum Sen | not yet established by repeatable binary tests | no | candidate: Sen 0.6.0; unverified as a release guarantee |
-| Kernel protocol | 9 | codec, handshake and routing tests | real Sen run required |
+| Sen 0.6.x | profile `legacy` (default) | codec, handshake and routing tests | kernel protocol 9 |
+| Sen 0.7.0-rc3 | profile `enhanced` | framing/profile tests | discovery, interests and state updates exercised against the official RC3 binary |
+| Kernel protocol | 9 or 11, selected by profile | codec, handshake and routing tests | exact match required |
 | Ether protocol | 2 | codec, handshake and routing tests | real Sen run required |
 
 Matching protocol numbers is necessary but not sufficient. A Sen release is
 listed as compatible only after the integration harness has covered discovery,
 interests, state/types, writes, methods, events, publication and reconnect.
 
-The protocol source files bundled for generation are byte-identical to Sen
-0.6.0, but this is provenance rather than proof of runtime compatibility.
+The bus, Ether runtime and discovery message schemas used by these profiles are
+shared by SEN 0.6.0 and 0.7.0-rc3. The `enhanced` profile additionally selects its
+length-prefixed TCP discovery and reserved-aware multicast allocation.
 
 ## Platforms and networking
 
@@ -32,7 +33,7 @@ available.
 
 ## Public API
 
-The following are treated as public for 0.8.x:
+The following are treated as public for 0.10.x:
 
 - the root exports `Sen`, `SenInterest`, `SenPublishedObject` and
   `SenRemoteObject`;
@@ -66,8 +67,8 @@ an authentication system.
 
 - Ether provides no authentication or confidentiality. Use trusted networks or
   a protected tunnel and restrict listener exposure.
-- Compatibility with Sen 0.6.0 and newer installations is not claimed until a
-  real binary completes the documented matrix.
+- Patch or prerelease builds that change the kernel protocol require a matching
+  profile; version-number proximity alone does not imply wire compatibility.
 - Multicast behavior depends on host routing, interfaces and firewall policy.
 - Type conversion follows the available TypeSpecs; applications must keep
   publisher and consumer schemas compatible.

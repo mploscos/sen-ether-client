@@ -285,9 +285,10 @@ test('bus reconnect preparation removes visible objects once', () => {
   let busRemoves = 0;
   let interestStale = 0;
   let objectStale = 0;
-  interest.on('remove', removed => {
+  interest.on('remove', (removed, detail) => {
     interestRemoves += 1;
     assert.equal(removed, object);
+    assert.equal(detail.reason, 'reconnect');
   });
   bus.on('remove', removed => {
     busRemoves += 1;
@@ -2189,6 +2190,120 @@ test('batched interests emit changes without individual change events', async ()
     ['latitude', 41.3],
     ['altitude', 1000]
   ]);
+});
+
+test('interest handle helpers replay objects and read filtered snapshots in one batch', async () => {
+  const { interest, object } = makeTypedObject();
+  object.snapshot.latitude = 40.4;
+  object.snapshot.longitude = -3.7;
+
+  const added = [];
+  const cancelAdded = interest.onObjectAdded(item => added.push(item));
+  cancelAdded();
+  cancelAdded();
+
+  assert.deepEqual(added, [object]);
+  assert.equal(interest.objectByName(object.name), object);
+
+  const states = await interest.getObjectsBatchState({
+    objectNames: [object.name],
+    propertyNames: ['latitude']
+  });
+  assert.deepEqual(states, [{
+    key: object.key,
+    name: object.name,
+    className: object.className,
+    properties: { latitude: 40.4 },
+    errors: {}
+  }]);
+});
+
+test('native objects expose inherited members and referenced TypeSpecs to adapters', () => {
+  const { bus, object } = makeTypedObject();
+  const baseSpec = {
+    qualifiedName: 'test.BaseTrack',
+    data: {
+      type: 'ClassTypeSpec',
+      value: {
+        parents: [],
+        properties: [{ name: 'id', type: 'u32', category: 'staticRO' }],
+        methods: [{ name: 'reset', args: [], returnType: 'void' }],
+        events: [{ name: 'removed', args: [] }]
+      }
+    }
+  };
+  object.spec.qualifiedName = 'test.Track';
+  object.spec.data.value.parents = ['test.BaseTrack'];
+  object.spec.data.value.methods = [{ name: 'move', args: [], returnType: 'void' }];
+  object.spec.data.value.events = [{ name: 'moved', args: [] }];
+  bus.typeRegistry.set('test.BaseTrack', baseSpec);
+  bus.typeRegistry.set('test.Track', object.spec);
+
+  assert.deepEqual(object.properties().map(member => member.name), [
+    'id', 'latitude', 'longitude', 'altitude'
+  ]);
+  assert.deepEqual(object.methods().map(member => member.name), ['reset', 'move']);
+  assert.deepEqual(object.events().map(member => member.name), ['removed', 'moved']);
+  assert.deepEqual(object.classLineage(), ['test.BaseTrack', 'test.Track']);
+  assert.deepEqual([...object.typeDefinitions().keys()].sort(), [
+    'test.BaseTrack', 'test.Track'
+  ]);
+});
+
+test('Sen exposes the TypeSpecs known by its joined buses', () => {
+  const sen = new Sen();
+  sen.client = { processInfo: { sessionName: 'hmi' } };
+  const bus = new SenBus(sen, 'objects', 1);
+  const track = { qualifiedName: 'test.Track', data: { type: 'ClassTypeSpec', value: {} } };
+  bus.typeRegistry.set(track.qualifiedName, track);
+  sen.buses.set(bus.name, bus);
+
+  assert.deepEqual(sen.listKnownTypes(), [track]);
+  assert.equal(sen.getType('test.Track'), track);
+  assert.equal(sen.getType('Track'), undefined);
+});
+
+test('remote objects expose one exact commit through handle-oriented subscriptions', () => {
+  const { interest, object } = makeTypedObject();
+  const objectCommits = [];
+  const interestCommits = [];
+  const propertyValues = [];
+  const cancelAny = object.onAnyChange((values, info) => {
+    objectCommits.push({ values: Object.fromEntries(values), timestamp: info.timestamp });
+  });
+  const cancelProperty = object.onPropertyChanged('latitude', (value, info) => {
+    propertyValues.push({ value, timestamp: info.timestamp });
+  });
+  const cancelInterest = interest.onChanges(commit => interestCommits.push(commit));
+
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.2 },
+    { name: 'longitude', type: 'f64', value: -3.8 }
+  ]), 'update', 123456n);
+
+  assert.deepEqual(objectCommits, [{
+    values: { latitude: 41.2, longitude: -3.8 },
+    timestamp: 123456n
+  }]);
+  assert.deepEqual(propertyValues, [{ value: 41.2, timestamp: 123456n }]);
+  assert.equal(interestCommits.length, 1);
+  assert.equal(interestCommits[0].object, object);
+  assert.deepEqual(interestCommits[0].propertyTimestamps, {
+    latitude: 123456n,
+    longitude: 123456n
+  });
+
+  cancelAny();
+  cancelAny();
+  cancelProperty();
+  cancelInterest();
+  object.applyState(propertyUpdateBuffer([
+    { name: 'latitude', type: 'f64', value: 41.3 }
+  ]), 'update', 123457n);
+
+  assert.equal(objectCommits.length, 1);
+  assert.equal(propertyValues.length, 1);
+  assert.equal(interestCommits.length, 1);
 });
 
 test('batched interests flush on close and keep options after local reset', async () => {

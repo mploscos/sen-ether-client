@@ -80,6 +80,23 @@ function respond(bus, ticketId, result = 'success', error = '') {
   });
 }
 
+test('interest release is idempotent and stops the native interest once', async () => {
+  const { bus, client, interest } = makeHarness();
+  let closes = 0;
+  interest.on('close', () => {
+    closes += 1;
+  });
+
+  await interest.release();
+  await interest.release();
+  interest.close();
+
+  assert.equal(client.stopCount, 1);
+  assert.equal(closes, 1);
+  assert.equal(interest.state, 'released');
+  assert.equal(bus.interests.has(interest.id), false);
+});
+
 test('a method timeout affects only its pending call and later traffic remains operational', async () => {
   const { bus, calls, client, interest, object } = makeHarness();
 

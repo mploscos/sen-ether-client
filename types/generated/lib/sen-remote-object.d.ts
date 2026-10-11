@@ -71,6 +71,19 @@ export declare class SenRemoteObject extends EventEmitter {
     method(name: any): any;
     /** Find a declared or inherited event by name. */
     event(name: any): any;
+    /** Return every declared and inherited property in parent-first order. */
+    properties(): any[];
+    /** Return every declared and inherited method in parent-first order. */
+    methods(): any[];
+    /** Return every declared and inherited event in parent-first order. */
+    events(): any[];
+    /** Return the parent-first qualified class lineage. */
+    classLineage(): any;
+    /**
+     * Return the known TypeSpecs required to describe this object. The map is
+     * detached from the mutable bus registry and is safe for adapter traversal.
+     */
+    typeDefinitions(): Map<any, any>;
     /**
    * @param {{timeout?:number}} [options]
    * @returns {Promise<object>}
@@ -83,6 +96,29 @@ export declare class SenRemoteObject extends EventEmitter {
    * @returns {Promise<unknown>}
    */
     get(name: string): Promise<unknown>;
+    /**
+     * Subscribe to one property using the callback shape shared with the
+     * JSON-RPC client. The current value is not replayed; read it with get().
+     */
+    /**
+     * @param {string} name
+     * @param {(value: unknown, info: import('../index.js').SenDeliveryInfo) => void} handler
+     * @returns {import('../index.js').SenCancel}
+     */
+    onPropertyChanged(name: string, handler: (value: unknown, info: import('../index.js').SenDeliveryInfo) => void): import('../index.js').SenCancel;
+    /** Subscribe to the properties changed by each exact native commit. */
+    /**
+     * @param {(values: Map<string, unknown>, info: import('../index.js').SenDeliveryInfo) => void} handler
+     * @returns {import('../index.js').SenCancel}
+     */
+    onAnyChange(handler: (values: Map<string, unknown>, info: import('../index.js').SenDeliveryInfo) => void): import('../index.js').SenCancel;
+    /** Subscribe to one declared runtime event. */
+    /**
+     * @param {string} name
+     * @param {(args: unknown[], info: import('../index.js').SenDeliveryInfo) => void} handler
+     * @returns {import('../index.js').SenCancel}
+     */
+    onEventTriggered(name: string, handler: (args: unknown[], info: import('../index.js').SenDeliveryInfo) => void): import('../index.js').SenCancel;
     /** Return the timestamp of the last value-changing update for a property. */
     getPropertyTimestamp(name: any): bigint | undefined;
     /** Return the newest observed timestamp, including unchanged values. */

@@ -47,6 +47,8 @@ export declare class TcpDiscoveryHubScanner extends EventEmitter {
     #private;
     host: string;
     port: number;
+    protocolProfile: any;
+    tcpDiscoveryFraming: any;
     socket: net.Socket | null;
     receiveBuffer: Buffer<ArrayBuffer>;
     processes: Map<any, any>;

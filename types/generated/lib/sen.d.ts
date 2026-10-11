@@ -30,6 +30,7 @@ export declare class Sen extends EventEmitter {
         socketIdleTimeoutMs: number;
         presenceTimeoutMs: number;
         presenceCheckIntervalMs: number;
+        protocolProfile?: 'legacy' | 'enhanced';
         tcpHub?: string;
         session?: string;
         multicastDiscovery?: boolean;
@@ -76,6 +77,7 @@ export declare class Sen extends EventEmitter {
         socketIdleTimeoutMs: number;
         presenceTimeoutMs: number;
         presenceCheckIntervalMs: number;
+        protocolProfile?: 'legacy' | 'enhanced';
         tcpHub?: string;
         session?: string;
         multicastDiscovery?: boolean;
@@ -274,6 +276,10 @@ export declare class Sen extends EventEmitter {
     session(name: any): Promise<any>;
     listSessions(): any[];
     listBuses(options?: {}): any[];
+    /** Return a snapshot of every TypeSpec currently known by joined buses. */
+    listKnownTypes(): any[];
+    /** Read a currently-known TypeSpec without a transport round-trip. */
+    getType(name: any): any;
     /**
    * Discover visible SEN buses without creating interests or joining buses.
    *

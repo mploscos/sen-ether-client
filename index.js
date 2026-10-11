@@ -30,6 +30,7 @@
 /**
  * @typedef {object} SenConnectOptions
  * @property {string} [appName='sen-ether-client'] Local Ether process name.
+ * @property {'legacy'|'enhanced'} [protocolProfile='legacy'] SEN wire compatibility profile. Use `enhanced` for SEN 0.7.0-rc3 (kernel protocol 11).
  * @property {string} [tcpHub] Optional SEN TCP discovery hub as `host:port`. If omitted, multicast discovery is used.
  * @property {string} [session] Optional SEN session name. Omit it to let
  * `interest(query)` connect to the session named in the query.
@@ -159,6 +160,37 @@
  * @property {number} dropped Number of changes dropped since the previous batch.
  */
 
+/** @typedef {() => void} SenCancel */
+
+/**
+ * @typedef {object} SenDeliveryInfo
+ * @property {bigint|number|undefined} [timestamp]
+ * @property {SenChange} [change]
+ * @property {SenCommit} [commit]
+ * @property {SenRuntimeEvent} [event]
+ */
+
+/**
+ * Every value change decoded from one native object state/update message.
+ * @typedef {object} SenCommit
+ * @property {import('./lib/sen.js').SenRemoteObject} object
+ * @property {string} source
+ * @property {bigint|number|undefined} [timestamp]
+ * @property {bigint|undefined} [timestampNs]
+ * @property {Record<string, unknown>} values
+ * @property {Record<string, bigint>} propertyTimestamps
+ * @property {SenChange[]} changes
+ */
+
+/**
+ * @typedef {object} SenObjectBatchState
+ * @property {string} key
+ * @property {string} name
+ * @property {string} className
+ * @property {Record<string, unknown>} properties
+ * @property {Record<string, string>} errors
+ */
+
 /**
  * @typedef {string | number | ((object: import('./lib/sen.js').SenRemoteObject) => boolean)} SenObjectSelector
  */
@@ -186,3 +218,4 @@ export { parseFom, resolveFom, FomResolutionError } from './lib/fom.js';
 export { parseXml, XmlSyntaxError } from './lib/xml.js';
 export { senTypeHash, senTypeHashes } from './lib/type-hash.js';
 export { compileInterestQuery, parseInterestQuery } from './lib/interest-query.js';
+export { SEN_PROTOCOL_PROFILES, resolveProtocolProfile } from './lib/protocol/profiles.js';

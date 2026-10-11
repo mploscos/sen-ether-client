@@ -3,6 +3,39 @@
 All notable changes are documented here. The project follows semantic version
 intent while its public API remains pre-1.0.
 
+## 0.10.0 - 2026-10-11
+
+### Added
+
+- Explicit `legacy` and `enhanced` protocol profiles. The enhanced profile supports kernel protocol 11, length-prefixed TCP discovery and the multicast allocation rules used by SEN 0.7.0-rc3.
+- `SenInterest` now exposes handle-oriented live collection callbacks,
+  `objectByName()`, `getObjectsBatchState()`, idempotent `release()` and exact
+  native commit delivery through `onChanges()`.
+- `SenRemoteObject` now exposes `onPropertyChanged()`, `onAnyChange()` and
+  `onEventTriggered()` cancellation-based subscriptions alongside the existing
+  EventEmitter API.
+- Remote objects expose inherited properties, methods, events, class lineage
+  and their referenced TypeSpecs without requiring consumers to walk the
+  native bus registry.
+- `Sen.listKnownTypes()` and `Sen.getType()` expose the TypeSpecs already known
+  by joined buses.
+
+### Changed
+
+- An Ether object update is surfaced as one exact commit independently of the
+  existing interval/size batching mode. This lets gateways forward one native
+  commit without reconstructing it from individual property notifications.
+- Releasing a high-level interest is idempotent and stops its native interest
+  at most once.
+- Interest removal callbacks receive the removal reason as a second argument,
+  allowing adapters to distinguish reconnect invalidation from real removal.
+
+### Compatibility
+
+- `legacy` remains the default profile.
+- Existing `change`, `change:<property>`, `changes`, object and event streams
+  remain available. The new handle-oriented methods are additive.
+
 ## 0.9.0 - 2026-10-08
 
 ### Added

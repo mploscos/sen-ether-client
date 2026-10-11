@@ -1,10 +1,20 @@
 {
   "name": "sen-ether-client",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Pure JavaScript SEN Ether client for consuming and publishing SEN objects from Node.js",
   "senCompatibility": {
-    "kernelProtocolVersion": 9,
-    "etherProtocolVersion": 2
+    "defaultProfile": "legacy",
+    "profiles": {
+      "legacy": {
+        "kernelProtocolVersion": 9,
+        "etherProtocolVersion": 2
+      },
+      "enhanced": {
+        "kernelProtocolVersion": 11,
+        "etherProtocolVersion": 2,
+        "validatedRelease": "0.7.0-rc3"
+      }
+    }
   },
   "type": "module",
   "main": "index.js",
