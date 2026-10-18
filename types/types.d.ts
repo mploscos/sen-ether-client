@@ -19,6 +19,7 @@ export function NormalizeSenTypeName(value: unknown): string;
 export function GetSenTypeNameFromSpec(spec: unknown): string;
 
 export class SenTypeCatalog extends Map<string, any> {
+  /** Revision incremented whenever the catalog contents change. */
   revision: number;
   constructor(entries?: Iterable<readonly [string, any]>);
   resolve(name: string, normalize: (name: unknown) => string): any | null;
@@ -32,6 +33,7 @@ export type SenTypeDefinitions = Map<string, any> | Record<string, any>;
 
 export class SenTypeResolver {
   constructor(definitions: SenTypeDefinitions | (() => SenTypeDefinitions));
+  /** Function returning the current SEN type definitions. */
   typeDefinitions: () => SenTypeDefinitions;
 
   resolveTypeDefinition(typeName: string, options?: { unique?: boolean }): any | null;

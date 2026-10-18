@@ -5,6 +5,7 @@
  */
 export declare class SenTypeCatalog extends Map<string, any> {
     #private;
+    /** Revision incremented whenever the catalog contents change. */
     revision: number;
     /** @param {Iterable<readonly [string, any]>} [entries] */
     constructor(entries?: Iterable<readonly [string, any]>);

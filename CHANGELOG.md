@@ -3,6 +3,18 @@
 All notable changes are documented here. The project follows semantic version
 intent while its public API remains pre-1.0.
 
+## 0.10.1 - 2026-10-18
+
+### Changed
+
+- Public catalog revision and resolver type-definition access now include
+  JSDoc in both the JavaScript sources and generated declarations, improving
+  editor help and generated API documentation.
+
+### Compatibility
+
+- Runtime behavior and the public API are unchanged.
+
 ## 0.10.0 - 2026-10-11
 
 ### Added

@@ -28,6 +28,7 @@ export declare function GetSenTypeValue(definition: any): any;
 export declare function NormalizeSenTypeName(value: any): string;
 export declare function GetSenTypeNameFromSpec(spec: any): string;
 export declare class SenTypeResolver {
+    /** Function returning the current SEN type definitions. */
     typeDefinitions: Function;
     /** @param {Map<string, any> | Record<string, any> | (() => Map<string, any> | Record<string, any>)} definitions */
     constructor(definitions: Map<string, any> | Record<string, any> | (() => Map<string, any> | Record<string, any>));
