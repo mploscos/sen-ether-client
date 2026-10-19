@@ -3,6 +3,19 @@
 All notable changes are documented here. The project follows semantic version
 intent while its public API remains pre-1.0.
 
+## 0.10.2 - 2026-10-19
+
+### Fixed
+
+- Published type dependencies now precede the types that reference them, and
+  inherited structures include their parent. Type responses preserve this order
+  even when requests arrive out of order, for both `legacy` and `enhanced` profiles.
+- Values of inherited structures now include parent fields in wire order.
+
+### Compatibility
+
+- No public API or message format changes.
+
 ## 0.10.1 - 2026-10-18
 
 ### Changed

@@ -9,10 +9,13 @@ import { pathToFileURL } from 'node:url';
 import { decodeKernelControlMessage, encodeKernelControlMessage } from '../lib/bus.js';
 import { EtherClient } from '../lib/client.js';
 import { crc32 } from '../lib/crc32.js';
+import { collectTypeDependencies } from '../lib/local-objects.js';
+import { LocalPublications } from '../lib/local-publications.js';
 import { makeObjectId } from '../lib/object-id.js';
 import { Sen, senTypeHashes } from '../index.js';
 import { parseStl, resolveStl, StlResolutionError, StlSyntaxError, tokenizeStl } from '../lib/stl.js';
 import { generateStlModule } from '../lib/stl-module.js';
+import { decodeValue, encodeValue } from '../lib/values.js';
 
 const COMPLEX_STL = `
 package stl_resolver_test;
@@ -42,6 +45,93 @@ abstract class ValidClass : extends ValidParentClass {
   event eventWithArguments(when: u32, where: string);
 }
 `;
+
+const MIRROR_STL = `
+package mirror;
+struct BaseViewport { x: f64 }
+struct Viewport: BaseViewport { y: f64 }
+sequence<Viewport> Viewports;
+optional<Viewports> MaybeViewports;
+alias Payload MaybeViewports;
+class Display { var payload: Payload; }
+`;
+
+function mirrorPublication() {
+  const registry = resolveStl('mirror.stl', { sources: { 'mirror.stl': MIRROR_STL } }).toTypeSpecs();
+  const hashes = senTypeHashes(registry);
+  const sent = [];
+  const publications = new LocalPublications({
+    emit() {},
+    sendControl(_bus, connection, message) { sent.push({ connection, message }); },
+    sendMessage() {},
+    sendMulticast() {},
+    sendUnicast() {}
+  });
+  const bus = {
+    localTypeRegistry: new Map(), localTypeResponsesByHash: new Map(),
+    publishedObjects: new Map(), remoteInterests: new Map()
+  };
+  publications.publish(bus, { name: 'display', className: 'mirror.Display', properties: {} }, { types: registry });
+  return { registry, hashes, sent, publications, bus };
+}
+
+test('class dependencies list struct parents and nested types before their users', () => {
+  const { registry, hashes, bus } = mirrorPublication();
+  const names = ['BaseViewport', 'Viewport', 'Viewports', 'MaybeViewports', 'Payload'];
+  assert.deepEqual(
+    [...collectTypeDependencies(registry.get('mirror.Display'), registry)],
+    names.map(name => hashes.get(`mirror.${name}`))
+  );
+  assert.deepEqual(
+    bus.localTypeResponsesByHash.get(hashes.get('mirror.Display')).dependentTypes,
+    names.map(name => hashes.get(`mirror.${name}`))
+  );
+  assert.deepEqual(
+    [...collectTypeDependencies(registry.get('mirror.Viewport'), registry)],
+    [hashes.get('mirror.BaseViewport')]
+  );
+});
+
+test('type responses sort reversed requests, deduplicate hashes and retain unknown rejections', () => {
+  const { hashes, sent, publications, bus } = mirrorPublication();
+  const names = ['BaseViewport', 'Viewport', 'Viewports', 'MaybeViewports', 'Payload', 'Display'];
+  const unknown = 0xffffffff;
+  const connection = {};
+  publications.respondToTypesRequest(bus, { to: 27 }, {
+    requests: [hashes.get('mirror.Display'), hashes.get('mirror.Payload'), hashes.get('mirror.Viewports'),
+      hashes.get('mirror.Viewport'), hashes.get('mirror.BaseViewport'),
+      hashes.get('mirror.MaybeViewports'), hashes.get('mirror.Payload'), unknown, unknown]
+  }, connection);
+  assert.equal(sent.length, 2);
+  assert.ok(sent.every(item => item.connection === connection));
+  assert.equal(sent[0].message.value.ownerId, 27);
+  assert.deepEqual(sent[0].message.value.types.map(item => item.spec.qualifiedName),
+    names.map(name => `mirror.${name}`));
+  assert.deepEqual(sent[1].message, {
+    type: 'TypesInfoRejection', value: { ownerId: 27, rejections: [String(unknown)] }
+  });
+
+  const decoded = decodeKernelControlMessage(encodeKernelControlMessage(sent[0].message));
+  assert.deepEqual(decoded.value.types.map(item => item.spec.qualifiedName),
+    names.map(name => `mirror.${name}`));
+  assert.equal(decoded.value.ownerId, 27);
+});
+
+test('a single requested type does not send dependencies already known by the receiver', () => {
+  const { hashes, sent, publications, bus } = mirrorPublication();
+  publications.respondToTypesRequest(bus, { to: 42 }, {
+    requests: [hashes.get('mirror.Payload')]
+  }, {});
+  assert.deepEqual(sent[0].message.value.types.map(item => item.spec.qualifiedName), ['mirror.Payload']);
+});
+
+test('inherited struct values include parent fields through alias, optional and sequence', () => {
+  const registry = resolveStl('mirror.stl', { sources: { 'mirror.stl': MIRROR_STL } }).toTypeSpecs();
+  const value = [{ x: 40.4, y: -3.7 }];
+  const encoded = encodeValue(value, 'mirror.Payload', registry);
+  assert.equal(encoded.length, 21);
+  assert.deepEqual(decodeValue(encoded, 'mirror.Payload', registry), value);
+});
 
 test('tokenizer follows SEN comments, literals and qualified identifiers', () => {
   const tokens = tokenizeStl(`// description\npackage a.b;\nquantity<f64, deg> Angle [min: -180.0];`);
