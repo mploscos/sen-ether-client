@@ -15,6 +15,7 @@ import { makeObjectId } from '../lib/object-id.js';
 import { Sen, senTypeHashes } from '../index.js';
 import { parseStl, resolveStl, StlResolutionError, StlSyntaxError, tokenizeStl } from '../lib/stl.js';
 import { generateStlModule } from '../lib/stl-module.js';
+import { decodeValue, encodeValue } from '../lib/values.js';
 
 const COMPLEX_STL = `
 package stl_resolver_test;
@@ -122,6 +123,14 @@ test('a single requested type does not send dependencies already known by the re
     requests: [hashes.get('mirror.Payload')]
   }, {});
   assert.deepEqual(sent[0].message.value.types.map(item => item.spec.qualifiedName), ['mirror.Payload']);
+});
+
+test('inherited struct values include parent fields through alias, optional and sequence', () => {
+  const registry = resolveStl('mirror.stl', { sources: { 'mirror.stl': MIRROR_STL } }).toTypeSpecs();
+  const value = [{ x: 40.4, y: -3.7 }];
+  const encoded = encodeValue(value, 'mirror.Payload', registry);
+  assert.equal(encoded.length, 21);
+  assert.deepEqual(decodeValue(encoded, 'mirror.Payload', registry), value);
 });
 
 test('tokenizer follows SEN comments, literals and qualified identifiers', () => {

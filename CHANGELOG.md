@@ -10,6 +10,7 @@ intent while its public API remains pre-1.0.
 - Published type dependencies now precede the types that reference them, and
   inherited structures include their parent. Type responses preserve this order
   even when requests arrive out of order, for both `legacy` and `enhanced` profiles.
+- Values of inherited structures now include parent fields in wire order.
 
 ### Compatibility
 
