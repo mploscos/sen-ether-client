@@ -3,6 +3,16 @@
 All notable changes are documented here. The project follows semantic version
 intent while its public API remains pre-1.0.
 
+## 0.10.3 - 2026-10-20
+
+### Fixed
+
+- STL `quantity<T, T>` declarations now resolve as unitless quantities with
+  native SEN metadata and type hashes.
+- Quantity bounds omitted from STL now use the numeric type limits, matching
+  generated SEN C++ types and allowing typed native consumers to read published
+  objects.
+
 ## 0.10.2 - 2026-10-19
 
 ### Fixed

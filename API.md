@@ -272,6 +272,13 @@ returns a reusable registry. It is a Node.js filesystem helper; the parser and
 resolver themselves are pure JavaScript. Load once during startup, rather than
 while publishing objects.
 
+An STL declaration such as `quantity<u16, u16> Count;` defines a unitless
+numeric quantity. It is represented as a SEN `QuantityTypeSpec` using SEN's
+`none` unit marker;
+`quantity<u16, m> Distance;` uses the registered unit `m`.
+Omitted quantity bounds use the numeric type's limits, matching SEN's generated
+C++ metadata.
+
 An STL `import` ending in `.xml` is interpreted as an IEEE 1516.2-2010 HLA FOM
 module. Its sibling module directories and mapping XML files are loaded using
 SEN's FOM layout convention and merged into the returned registry.

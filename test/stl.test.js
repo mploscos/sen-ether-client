@@ -56,6 +56,14 @@ alias Payload MaybeViewports;
 class Display { var payload: Payload; }
 `;
 
+const UNITLESS_STL = `
+package fixture;
+quantity<u16, u16> Count [min: 1, max: 65535];
+quantity<u16, u16> Index;
+struct Sample { count: Count, index: Index }
+class Source { var sample: Sample [writable]; }
+`;
+
 function mirrorPublication() {
   const registry = resolveStl('mirror.stl', { sources: { 'mirror.stl': MIRROR_STL } }).toTypeSpecs();
   const hashes = senTypeHashes(registry);
@@ -197,11 +205,51 @@ test('resolver mirrors official rejection of interfaces and class value usage', 
   );
 });
 
-test('resolver rejects an unknown quantity unit like the official UnitRegistry', () => {
+test('resolver rejects an unknown quantity unit', () => {
   assert.throws(
     () => resolveStl('input.stl', { sources: { 'input.stl': 'package test; quantity<f64, unknown> Broken;' } }),
     /unknown SEN unit/
   );
+});
+
+test('quantity<T, T> resolves as a unitless SEN quantity and round-trips as a number', () => {
+  const source = 'package test; quantity<u16, u16> UnitlessQuantity [min: 0, max: 511];';
+  const declaration = parseStl(source).statements.find(item => item.kind === 'QuantityDeclaration');
+  assert.equal(declaration.elementType, 'u16');
+  assert.equal(declaration.unit, 'u16');
+
+  const registry = resolveStl('unitless.stl', { sources: { 'unitless.stl': source } });
+  assert.equal(registry.get('test.UnitlessQuantity').unit, null);
+  const types = registry.toTypeSpecs();
+  const spec = types.get('test.UnitlessQuantity');
+  assert.equal(spec.data.type, 'QuantityTypeSpec');
+  assert.deepEqual(spec.data.value.unit, { name: '', abbreviation: 'none', category: 'length' });
+  assert.deepEqual([spec.data.value.minValue, spec.data.value.maxValue], [0, 511]);
+
+  const response = { type: 'TypesInfoResponse', value: { ownerId: 1, types: [{
+    type: 'NonClassSpecResponse', classHash: 0, spec, dependentTypes: []
+  }] } };
+  const decoded = decodeKernelControlMessage(encodeKernelControlMessage(response));
+  assert.deepEqual(decoded.value.types[0].spec, spec);
+  assert.equal(typeof senTypeHashes(registry).get('test.UnitlessQuantity'), 'number');
+  assert.equal(senTypeHashes(types).get('test.UnitlessQuantity'), senTypeHashes(registry).get('test.UnitlessQuantity'));
+
+  const encoded = encodeValue(345, 'test.UnitlessQuantity', types);
+  assert.equal(encoded.length, 2);
+  assert.equal(decodeValue(encoded, 'test.UnitlessQuantity', types), 345);
+});
+
+test('unitless quantity hashes match types compiled by SEN C++ with default bounds', () => {
+  const registry = resolveStl('unitless.stl', { sources: { 'unitless.stl': UNITLESS_STL } });
+  const types = registry.toTypeSpecs();
+  const index = types.get('fixture.Index').data.value;
+  assert.deepEqual([index.minValue, index.maxValue], [0, 65535]);
+  assert.deepEqual(Object.fromEntries(senTypeHashes(registry)), {
+    'fixture.Count': 3160948622,
+    'fixture.Index': 3850352191,
+    'fixture.Sample': 1756530475,
+    'fixture.Source': 3066991843
+  });
 });
 
 test('resolver mirrors SEN basic SI prefixes and additional quantity units', () => {
